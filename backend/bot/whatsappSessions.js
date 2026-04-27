@@ -12,7 +12,26 @@ const authDirectoryPath = path.resolve(__dirname, "../../data/.wwebjs_auth");
 const sessions = {};
 const RECONNECT_BASE_DELAY_MS = 5000;
 const RECONNECT_MAX_DELAY_MS = 30000;
-const BOOTSTRAP_CONCURRENCY = 3;
+const RECONNECT_MAX_ATTEMPTS = Number(process.env.WHATSAPP_RECONNECT_MAX_ATTEMPTS || 15);
+const SESSION_INIT_TIMEOUT_MS = Number(process.env.WHATSAPP_SESSION_INIT_TIMEOUT_MS || 120000);
+const BOOTSTRAP_CONCURRENCY = Math.max(1, Number(process.env.WHATSAPP_BOOTSTRAP_CONCURRENCY || 1));
+const BOOTSTRAP_MODE = String(process.env.WHATSAPP_BOOTSTRAP_MODE || "lazy").trim().toLowerCase();
+const DEFAULT_PUPPETEER_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+  "--single-process",
+  "--no-zygote",
+  "--disable-extensions",
+  "--disable-background-networking",
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-default-apps",
+  "--disable-sync",
+  "--disable-translate",
+  "--mute-audio"
+];
 
 ensureAuthDirectory();
 
@@ -112,6 +131,24 @@ function getReconnectDelay(attempts) {
   return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * Math.max(1, attempts));
 }
 
+function withTimeout(promise, timeoutMs, errorMessage) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 function resetReconnectState(entry, tenantId) {
   if (!entry) {
     return;
@@ -144,6 +181,21 @@ function scheduleReconnect(tenantId, reason = "") {
 
   entry.reconnectAttempts = Number(entry.reconnectAttempts || 0) + 1;
   entry.lastDisconnectAt = new Date().toISOString();
+
+  if (entry.reconnectAttempts > RECONNECT_MAX_ATTEMPTS) {
+    persistSession(tenantId, {
+      connected: false,
+      status: "reconnect_timeout",
+      reconnectAttempts: entry.reconnectAttempts,
+      lastDisconnectAt: entry.lastDisconnectAt,
+      nextReconnectAt: null,
+      manualStop: false,
+      lastError: String(reason || "reconnect_timeout")
+    });
+
+    console.error(`[tenant:${tenantId}] Limite de reconexao atingido (${RECONNECT_MAX_ATTEMPTS}).`);
+    return;
+  }
 
   const delay = getReconnectDelay(entry.reconnectAttempts);
   const nextReconnectAt = new Date(Date.now() + delay).toISOString();
@@ -355,14 +407,7 @@ function createClient(tenantId) {
     authTimeoutMs: 90000,
     puppeteer: {
       headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-gpu"
-      ]
+      args: DEFAULT_PUPPETEER_ARGS
     }
   });
 }
@@ -581,7 +626,11 @@ async function startSession(tenantId, options = {}) {
   });
 
   try {
-    await client.initialize();
+    await withTimeout(
+      client.initialize(),
+      SESSION_INIT_TIMEOUT_MS,
+      `Timeout ao inicializar sessao WhatsApp apos ${SESSION_INIT_TIMEOUT_MS}ms`
+    );
   } catch (error) {
     entry.isInitializing = false;
     entry.isReady = false;
@@ -715,6 +764,26 @@ async function bootstrapSessions() {
 
     return hasLocalSession || shouldRestoreByStatus;
   });
+
+  if (BOOTSTRAP_MODE !== "eager") {
+    restorableTenants.forEach((tenant) => {
+      const session = readSession(tenant.tenantId);
+      const hasLocalSession = hasSessionArtifacts(tenant.tenantId);
+
+      persistSession(tenant.tenantId, {
+        ...session,
+        connected: false,
+        status: hasLocalSession ? "restore_pending" : "disconnected",
+        nextReconnectAt: null,
+        manualStop: false
+      });
+    });
+
+    console.log(
+      `[whatsapp] Bootstrap lazy ativo. ${restorableTenants.length} sessao(oes) marcadas para restauracao sob demanda.`
+    );
+    return;
+  }
 
   for (let index = 0; index < restorableTenants.length; index += BOOTSTRAP_CONCURRENCY) {
     const batch = restorableTenants.slice(index, index + BOOTSTRAP_CONCURRENCY);

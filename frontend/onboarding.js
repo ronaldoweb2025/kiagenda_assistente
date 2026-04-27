@@ -247,6 +247,9 @@ function getWhatsappStatusLabel(session) {
   if (status === "qr") return "QR Code pronto para leitura";
   if (status === "authenticated") return "Conectando";
   if (status === "initializing") return "Iniciando conexao";
+  if (status === "reconnecting") return "Reconectando";
+  if (status === "restore_pending") return "Sessao salva, aguardando inicializacao";
+  if (status === "reconnect_timeout") return "Reconexao pausada por timeout";
   if (status === "auth_failure") return "Falha na autenticacao";
   return "Desconectado";
 }
@@ -254,7 +257,7 @@ function getWhatsappStatusLabel(session) {
 function getWhatsappStatusTone(session) {
   const status = String(session?.status || "");
   if (session?.connected || status === "connected") return "positive";
-  if (status === "qr" || status === "authenticated" || status === "initializing") return "pending";
+  if (["qr", "authenticated", "initializing", "reconnecting", "restore_pending"].includes(status)) return "pending";
   return "negative";
 }
 
@@ -741,7 +744,7 @@ async function refreshWhatsappStatus() {
 function shouldKeepPollingSession(session) {
   const status = String(session?.status || "");
 
-  return ["initializing", "qr", "authenticated"].includes(status);
+  return ["initializing", "qr", "authenticated", "reconnecting", "restore_pending"].includes(status);
 }
 
 async function pollWhatsappStatus(attempt = 0) {
