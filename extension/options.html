@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KiAgenda Assistente | Configuracoes</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="extension-body options-body">
+  <div class="options-layout">
+    <aside class="options-sidebar">
+      <div class="sidebar-brand-card">
+        <span class="sidebar-badge">KiAgenda Assistente</span>
+        <h1>Configuracoes da extensao</h1>
+        <p>Plano Essencial, focado em texto e respostas simples no WhatsApp Web.</p>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button type="button" class="sidebar-link active" data-target="business">Dados do negocio</button>
+        <button type="button" class="sidebar-link" data-target="automation">Atendimento automatico</button>
+        <button type="button" class="sidebar-link" data-target="catalog">Produtos e servicos</button>
+        <button type="button" class="sidebar-link" data-target="links">Links</button>
+        <button type="button" class="sidebar-link" data-target="test">Testar atendimento</button>
+        <button type="button" class="sidebar-link" data-target="upgrade">Upgrade para Nuvem</button>
+      </nav>
+    </aside>
+
+    <main class="options-main">
+      <header class="options-header">
+        <div>
+          <p class="section-eyebrow">Plano Essencial</p>
+          <h2>KiAgenda Assistente para Chrome</h2>
+          <p class="section-copy">Gerencie o atendimento localmente, com produtos, servicos, links e respostas em texto.</p>
+        </div>
+
+        <div class="options-header-actions">
+          <span id="saveStatus" class="status-pill neutral">Alteracoes locais</span>
+          <button id="saveAllButton" class="primary-button header-save-button" type="button">Salvar configuracoes</button>
+        </div>
+      </header>
+
+      <section class="panel-section active" data-section="business">
+        <div class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Dados do negocio</p>
+              <h3>Informacoes basicas</h3>
+              <p class="section-copy">Preencha apenas o necessario para personalizar o atendimento.</p>
+            </div>
+          </div>
+
+          <form id="businessForm" class="form-grid">
+            <label>
+              Nome do negocio
+              <input id="businessName" type="text" placeholder="Ex.: Cafe da Esquina">
+            </label>
+
+            <label>
+              Nome do atendente
+              <input id="attendantName" type="text" placeholder="Ex.: Ana">
+            </label>
+
+            <label class="full-width">
+              Tipo de negocio
+              <input id="businessType" type="text" placeholder="Ex.: Cafeteria, Loja, Clinica">
+            </label>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel-section" data-section="automation">
+        <div class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Atendimento automatico</p>
+              <h3>Modelo de atendimento</h3>
+              <p class="section-copy">Escolha como o atendimento deve iniciar a conversa. O sistema monta as opcoes automaticamente.</p>
+            </div>
+          </div>
+
+          <div id="modelGrid" class="model-grid"></div>
+
+          <div class="content-card subtle-card inner-card">
+            <p class="section-eyebrow">Resumo do modelo</p>
+            <h4 id="modelTitle">Atendimento padrao</h4>
+            <p id="modelDescription" class="section-copy"></p>
+          </div>
+
+          <div class="content-card subtle-card inner-card">
+            <p class="section-eyebrow">Opcoes do atendimento</p>
+            <div id="modelOptions" class="option-preview-grid"></div>
+          </div>
+
+          <div class="message-card-grid">
+            <article class="message-card" data-message-key="welcome">
+              <div class="message-card-header">
+                <div>
+                  <p class="section-eyebrow">Mensagem</p>
+                  <h4>Boas-vindas</h4>
+                </div>
+                <button type="button" class="neutral-button message-edit-button">Editar</button>
+              </div>
+              <p class="message-preview"></p>
+              <div class="message-editor hidden">
+                <textarea rows="7"></textarea>
+                <div class="message-editor-actions">
+                  <button type="button" class="primary-button message-save-button">Salvar</button>
+                  <button type="button" class="neutral-button message-cancel-button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="message-card" data-message-key="fallback">
+              <div class="message-card-header">
+                <div>
+                  <p class="section-eyebrow">Mensagem</p>
+                  <h4>Quando nao entender</h4>
+                </div>
+                <button type="button" class="neutral-button message-edit-button">Editar</button>
+              </div>
+              <p class="message-preview"></p>
+              <div class="message-editor hidden">
+                <textarea rows="7"></textarea>
+                <div class="message-editor-actions">
+                  <button type="button" class="primary-button message-save-button">Salvar</button>
+                  <button type="button" class="neutral-button message-cancel-button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+
+            <article class="message-card" data-message-key="handoff">
+              <div class="message-card-header">
+                <div>
+                  <p class="section-eyebrow">Mensagem</p>
+                  <h4>Atendimento humano</h4>
+                </div>
+                <button type="button" class="neutral-button message-edit-button">Editar</button>
+              </div>
+              <p class="message-preview"></p>
+              <div class="message-editor hidden">
+                <textarea rows="7"></textarea>
+                <div class="message-editor-actions">
+                  <button type="button" class="primary-button message-save-button">Salvar</button>
+                  <button type="button" class="neutral-button message-cancel-button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-section" data-section="catalog">
+        <div class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Produtos e servicos</p>
+              <h3>Cadastre o que voce oferece</h3>
+              <p class="section-copy">Quando o cliente pedir produtos ou servicos, a extensao mostra a lista e depois o detalhe do item escolhido.</p>
+            </div>
+          </div>
+
+          <div class="tab-switch">
+            <button type="button" class="tab-button active" data-tab="products">Produtos</button>
+            <button type="button" class="tab-button" data-tab="services">Servicos</button>
+          </div>
+
+          <form id="catalogForm" class="form-grid">
+            <label>
+              Nome
+              <input id="catalogName" type="text" placeholder="Ex.: Cafe especial">
+            </label>
+
+            <label>
+              Preco
+              <input id="catalogPrice" type="text" placeholder="Ex.: R$ 12,00">
+            </label>
+
+            <label class="full-width">
+              Descricao curta
+              <textarea id="catalogDescription" rows="4" placeholder="Explique rapidamente o item."></textarea>
+            </label>
+
+            <label class="full-width">
+              Link opcional
+              <input id="catalogLink" type="url" placeholder="https://...">
+            </label>
+
+            <div class="form-actions full-width">
+              <button id="catalogSubmitButton" class="primary-button" type="submit">Adicionar item</button>
+              <button id="catalogCancelEditButton" class="neutral-button hidden" type="button">Cancelar edicao</button>
+            </div>
+          </form>
+
+          <div id="catalogList" class="list-grid"></div>
+        </div>
+      </section>
+
+      <section class="panel-section" data-section="links">
+        <div class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Links</p>
+              <h3>Links importantes</h3>
+              <p class="section-copy">Cadastre os links que ajudam o cliente a comprar, agendar ou conhecer melhor o negocio.</p>
+            </div>
+          </div>
+
+          <div class="suggestion-row">
+            <button type="button" class="suggestion-chip" data-link-suggestion="Loja">Loja</button>
+            <button type="button" class="suggestion-chip" data-link-suggestion="Catalogo">Catalogo</button>
+            <button type="button" class="suggestion-chip" data-link-suggestion="Instagram">Instagram</button>
+            <button type="button" class="suggestion-chip" data-link-suggestion="Agendamento">Agendamento</button>
+            <button type="button" class="suggestion-chip" data-link-suggestion="Site">Site</button>
+          </div>
+
+          <form id="linkForm" class="form-grid">
+            <label>
+              Nome do link
+              <input id="linkTitle" type="text" placeholder="Ex.: Instagram">
+            </label>
+
+            <label>
+              URL
+              <input id="linkUrl" type="url" placeholder="https://...">
+            </label>
+
+            <div class="form-actions full-width">
+              <button id="linkSubmitButton" class="primary-button" type="submit">Adicionar link</button>
+              <button id="linkCancelEditButton" class="neutral-button hidden" type="button">Cancelar edicao</button>
+            </div>
+          </form>
+
+          <div id="linksList" class="list-grid"></div>
+        </div>
+      </section>
+
+      <section class="panel-section" data-section="test">
+        <div class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Testar atendimento</p>
+              <h3>Simulador simples</h3>
+              <p class="section-copy">Teste como a extensao responderia a saudacoes, pedidos de produtos, servicos, links e atendimento.</p>
+            </div>
+          </div>
+
+          <div class="simulator-card">
+            <div class="simulator-suggestions">
+              <button type="button" class="suggestion-chip" data-test-message="oi">oi</button>
+              <button type="button" class="suggestion-chip" data-test-message="produtos">produtos</button>
+              <button type="button" class="suggestion-chip" data-test-message="servicos">servicos</button>
+              <button type="button" class="suggestion-chip" data-test-message="links">links</button>
+              <button type="button" class="suggestion-chip" data-test-message="atendimento">atendimento</button>
+            </div>
+
+            <form id="testForm" class="test-form">
+              <input id="testMessageInput" type="text" placeholder="Digite uma mensagem para testar">
+              <button class="primary-button test-button" type="submit">Testar</button>
+            </form>
+
+            <div class="simulator-response">
+              <p class="section-eyebrow">Resposta do atendimento</p>
+              <pre id="testResponseOutput">Digite uma mensagem para testar o atendimento.</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-section" data-section="upgrade">
+        <div class="content-card upgrade-section-card">
+          <div class="section-head">
+            <div>
+              <p class="section-eyebrow">Upgrade para Nuvem</p>
+              <h3>Atendimento rodando 24h</h3>
+              <p class="section-copy">Na nuvem, seu atendimento pode rodar 24h, sem depender do navegador aberto.</p>
+            </div>
+          </div>
+
+          <div class="upgrade-highlight">
+            <div>
+              <h4>Leve o KiAgenda Assistente para a nuvem</h4>
+              <p>Quando voce quiser evoluir para uma operacao online, basta seguir para o site oficial.</p>
+            </div>
+            <button id="upgradeButton" class="success-button" type="button">Upgrade para Nuvem</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiagenda - Clientes</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">KiAgenda Assistente</p>
+        <h1>Clientes</h1>
+        <p class="hero-text">
+          Cada cliente tem seu proprio painel, atendimento automatico e conexao do WhatsApp separados.
+        </p>
+      </div>
+      <a class="secondary-button link-button" href="index.html">Inicio</a>
+    </header>
+
+    <p id="feedbackMessage" class="feedback" aria-live="polite"></p>
+
+    <main class="panel-grid">
+      <section class="card">
+        <h2>Novo cliente</h2>
+        <div class="field-grid">
+          <label>
+            ID do cliente
+            <input id="tenantId" type="text" placeholder="Ex.: cafepm">
+          </label>
+          <label>
+            Nome do negocio
+            <input id="businessName" type="text" placeholder="Ex.: Cafe Princesa Mineira">
+          </label>
+          <label>
+            Tipo de negocio
+            <input id="businessType" type="text" placeholder="Ex.: cafeteria">
+          </label>
+          <label>
+            Nome do atendente
+            <input id="attendantName" type="text" placeholder="Ex.: Atendimento">
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="createTenantButton" class="primary-button" type="button">Criar cliente</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Lista de clientes</h2>
+        <p class="muted-copy">Veja apenas clientes reais na area principal. Registros tecnicos de desenvolvimento ficam separados.</p>
+        <div id="tenantsList" class="tenant-list"></div>
+        <details id="testTenantsSection" class="tenants-test-section hidden-view">
+          <summary>Clientes de teste</summary>
+          <p class="muted-copy">Registros usados em desenvolvimento e validacao local.</p>
+          <div id="testTenantsList" class="tenant-list"></div>
+        </details>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="tenants.js"></script>
+</body>
+</html>

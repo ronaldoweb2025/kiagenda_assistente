@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiagenda - Painel do Negocio</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="dashboard-shell">
+    <aside class="dashboard-sidebar card">
+      <div class="dashboard-brand">
+        <p class="eyebrow">KiAgenda Assistente</p>
+        <h1 id="sidebarBusinessName">Painel do cliente</h1>
+        <p class="muted-copy">Gerencie seu Atendimento de forma simples no Whatsapp.</p>
+      </div>
+
+      <nav class="dashboard-nav" aria-label="Menu principal do painel">
+        <button class="dashboard-nav-button active" type="button" data-target="overview">Visão geral</button>
+        <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
+        <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento Automático</button>
+        <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
+        <button class="dashboard-nav-button" type="button" data-target="products">Produtos e serviços</button>
+        <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
+        <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
+        <button class="dashboard-nav-button" type="button" data-target="settings">Configurações do Negócio</button>
+      </nav>
+
+      <div class="dashboard-sidebar-footer">
+        <button id="logoutButton" class="neutral-button" type="button">Sair</button>
+      </div>
+    </aside>
+
+    <main class="dashboard-main">
+      <header class="dashboard-header card">
+        <div>
+          <p class="eyebrow">Painel principal</p>
+          <h2 id="headerBusinessName">Seu negocio</h2>
+          <p class="muted-copy">
+            Painel organizado para acompanhar o atendimento sem misturar configuracao inicial com personalizacao do dia a dia.
+          </p>
+        </div>
+
+        <div class="dashboard-header-actions">
+          <div class="dashboard-badge-group">
+            <span class="status-chip" id="headerWhatsappBadge">WhatsApp desconectado</span>
+            <span class="status-chip" id="headerBotBadge">Atendimento ativo</span>
+          </div>
+          <button id="saveConfigButton" class="primary-button" type="button">Salvar alteracoes</button>
+        </div>
+      </header>
+
+      <p id="feedbackMessage" class="feedback" aria-live="polite"></p>
+
+      <section class="dashboard-mobile-nav">
+        <div class="dashboard-mobile-nav-scroll">
+          <button class="dashboard-nav-button active" type="button" data-target="overview">Visao geral</button>
+          <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
+          <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento automatico</button>
+          <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
+          <button class="dashboard-nav-button" type="button" data-target="products">Produtos e servicos</button>
+          <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
+          <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
+          <button class="dashboard-nav-button" type="button" data-target="settings">Configuracoes do negocio</button>
+        </div>
+      </section>
+
+      <section class="panel-section active" data-section="overview">
+        <article class="card section-card">
+          <p class="eyebrow">Visao geral</p>
+          <h3>Acompanhe o essencial do seu atendimento</h3>
+          <p class="muted-copy">Veja rapidamente como esta a conexao, o conteudo cadastrado e se o atendimento automatico esta ativo.</p>
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>WhatsApp</span>
+              <strong id="overviewWhatsappStatus">Desconectado</strong>
+            </article>
+            <article class="stat-card">
+              <span>Produtos e servicos</span>
+              <strong id="overviewCatalogCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Links importantes</span>
+              <strong id="overviewLinksCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Atendimento automatico</span>
+              <strong id="overviewBotStatus">Inativo</strong>
+            </article>
+          </div>
+          <div class="button-row">
+            <button id="overviewBotToggleButton" class="neutral-button" type="button">Pausar atendimento</button>
+            <button id="overviewTestButton" class="secondary-button" type="button">Testar atendimento</button>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Recursos do plano</h4>
+                <p class="muted-copy">Veja o que esta liberado no seu plano atual e quais recursos voce pode usar agora.</p>
+              </div>
+            </div>
+            <div class="mini-badge-row">
+              <span id="overviewPlanBadge" class="badge-pill badge-pill-plan">Essencial</span>
+            </div>
+            <div id="planFeaturesList" class="mini-badge-row"></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="whatsapp">
+        <article class="card section-card">
+          <p class="eyebrow">WhatsApp</p>
+          <h3>Conecte e acompanhe seu numero</h3>
+          <p class="muted-copy">Use esta area para conectar, conferir o status e mostrar o QR Code quando necessario.</p>
+
+          <div class="field-grid">
+            <div class="status-box whatsapp-status-box">
+              <span>Status da conexao</span>
+              <strong id="whatsappStatus">Desconectado</strong>
+            </div>
+            <label>
+              Numero do WhatsApp
+              <input id="whatsappNumber" type="text" placeholder="Ex.: 5535999999999">
+            </label>
+          </div>
+
+          <input id="whatsappSessionId" type="hidden">
+
+          <div class="button-row">
+            <button id="connectWhatsappButton" class="secondary-button" type="button">Conectar WhatsApp</button>
+            <button id="disconnectWhatsappButton" class="neutral-button" type="button">Desconectar</button>
+            <button id="refreshWhatsappButton" class="neutral-button" type="button">Atualizar status</button>
+          </div>
+
+          <div id="whatsappQrPanel" class="qr-panel" aria-live="polite">
+            <p class="muted-copy">O QR Code vai aparecer aqui quando a conexao for iniciada.</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="bot">
+        <article class="card section-card">
+          <p class="eyebrow">Atendimento automatico</p>
+          <h3>Modelo de atendimento</h3>
+          <p class="muted-copy">Escolha como o atendimento automatico deve iniciar a conversa. O sistema monta as respostas automaticamente com base nos produtos, servicos e links cadastrados.</p>
+
+          <div class="field-grid">
+            <label class="full-width">
+              Modelo de atendimento
+              <select id="botModelSelect">
+                <option value="standard">Atendimento padrao</option>
+                <option value="loja_online">Loja online</option>
+                <option value="services_agendamento">Servicos / Agendamento</option>
+                <option value="delivery">Delivery</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>IA do atendimento</h4>
+                <p class="muted-copy">Use a IA para ajudar a classificar mensagens fora do menu padrao.</p>
+              </div>
+            </div>
+            <div id="aiToggleCard" class="feature-lock-inline hidden-view">
+              <label class="toggle-field">
+                <span>Ativar IA</span>
+                <input id="aiEnabledToggle" type="checkbox">
+              </label>
+            </div>
+            <div id="geminiConfigCard" class="section-subcard hidden-view">
+              <div class="field-grid">
+                <label class="full-width">
+                  GEMINI_API_KEY
+                  <input id="geminiApiKey" type="password" placeholder="Cole sua API Key do Gemini">
+                </label>
+                <label class="full-width">
+                  Modelo Gemini
+                  <select id="geminiModel">
+                    <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+                    <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                  </select>
+                </label>
+              </div>
+              <p class="field-help">A Gemini sera usada apenas para classificar intencao. A resposta final continua vindo do sistema com seus dados cadastrados.</p>
+            </div>
+            <div id="aiLockedNotice" class="feature-lock-inline hidden-view">
+              <p class="muted-copy">🔒 Disponivel no plano Profissional</p>
+              <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+            </div>
+          </div>
+
+          <div class="status-highlight bot-helper-box">
+            <span>Como funciona</span>
+            <strong id="botModelTitle">Atendimento padrao</strong>
+            <p id="botModelDescription" class="muted-copy">O sistema prepara as mensagens e monta as opcoes do atendimento automaticamente.</p>
+          </div>
+
+          <div id="botPlanLockCard" class="section-subcard feature-lock-card hidden-view">
+            <div>
+              <h4>🔒 Disponivel no plano Profissional</h4>
+              <p class="muted-copy">IA para ajudar a detectar a intencao do cliente e respostas mais inteligentes.</p>
+            </div>
+            <div class="button-row">
+              <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+            </div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Status do atendimento</h4>
+                <p id="botStatusDescription" class="muted-copy">Seu atendimento automatico esta ativo e pode responder normalmente.</p>
+              </div>
+              <button id="botToggleButton" class="neutral-button" type="button">Pausar atendimento</button>
+            </div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Opcoes que o atendimento automatico vai mostrar</h4>
+                <p class="muted-copy">Essas respostas sao criadas automaticamente com base no cadastro do seu negocio.</p>
+              </div>
+            </div>
+            <div id="botMenuPreview" class="bot-preview-list"></div>
+          </div>
+
+          <div class="message-preview-grid">
+            <article class="section-subcard message-card">
+              <div class="section-subcard-header message-card-header">
+                <h4>Boas-vindas</h4>
+                <button id="editWelcomeMessageButton" class="neutral-button" type="button">Editar</button>
+              </div>
+              <pre id="welcomePreview" class="message-preview"></pre>
+              <div id="welcomeEditor" class="message-editor hidden-view">
+                <label class="full-width">
+                  Editar mensagem de boas-vindas
+                  <textarea id="welcomeMessage" placeholder="Ex.: Ola! Como posso ajudar voce hoje?"></textarea>
+                </label>
+                <div class="button-row">
+                  <button id="saveWelcomeMessageButton" class="primary-button" type="button">Salvar alteracoes</button>
+                  <button id="cancelWelcomeMessageButton" class="neutral-button" type="button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+            <article class="section-subcard message-card">
+              <div class="section-subcard-header message-card-header">
+                <h4>Mensagem quando nao entender</h4>
+                <button id="editFallbackMessageButton" class="neutral-button" type="button">Editar</button>
+              </div>
+              <pre id="fallbackPreview" class="message-preview"></pre>
+              <div id="fallbackEditor" class="message-editor hidden-view">
+                <label class="full-width">
+                  Editar mensagem quando nao entender
+                  <textarea id="fallbackMessage" placeholder="Ex.: Nao entendi muito bem. Posso te mostrar opcoes do atendimento."></textarea>
+                </label>
+                <div class="button-row">
+                  <button id="saveFallbackMessageButton" class="primary-button" type="button">Salvar alteracoes</button>
+                  <button id="cancelFallbackMessageButton" class="neutral-button" type="button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+            <article class="section-subcard message-card">
+              <div class="section-subcard-header message-card-header">
+                <h4>Atendimento humano</h4>
+                <button id="editHandoffMessageButton" class="neutral-button" type="button">Editar</button>
+              </div>
+              <pre id="handoffPreview" class="message-preview"></pre>
+              <div id="messageAudioLockNotice" class="feature-lock-inline hidden-view">
+                <p class="muted-copy">🔒 Audio de atendimento disponivel no plano Profissional</p>
+                <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+              </div>
+              <div id="handoffEditor" class="message-editor hidden-view">
+                <label class="full-width">
+                  Editar mensagem de atendimento humano
+                  <textarea id="handoffMessage" placeholder="Ex.: Ja vou chamar alguem da equipe para continuar com voce."></textarea>
+                </label>
+                <label id="messageAudioField" class="full-width professional-audio-field hidden-view">
+                  Audio de atendimento (MP3)
+                  <input id="messageAudio" type="file" accept=".mp3,audio/mpeg">
+                  <span id="messageAudioStatus" class="field-help">Opcional. Esse audio sera enviado junto com o atendimento humano.</span>
+                </label>
+                <div class="button-row">
+                  <button id="saveHandoffMessageButton" class="primary-button" type="button">Salvar alteracoes</button>
+                  <button id="cancelHandoffMessageButton" class="neutral-button" type="button">Cancelar</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="plans">
+        <article class="card section-card">
+          <p class="eyebrow">Planos</p>
+          <h3>Entenda seu plano atual</h3>
+          <p class="muted-copy">Veja o que esta incluido no seu plano e, se quiser, faca upgrade de forma simples.</p>
+
+          <div class="plan-current-card">
+            <span class="plan-current-label">Plano atual</span>
+            <strong id="currentPlanName">Essencial</strong>
+            <p id="currentPlanDescription" class="muted-copy">Atendimento por texto com produtos, servicos, links e atendimento humano.</p>
+            <p id="currentSubscriptionStatus" class="muted-copy">Assinatura ativa</p>
+          </div>
+
+          <div class="plans-grid">
+            <article class="plan-card" id="essentialPlanCard">
+              <div class="plan-card-header">
+                <div>
+                  <h4>Essencial</h4>
+                  <p class="muted-copy">Ideal para Atendimento simples por texto.</p>
+                </div>
+                <span class="mini-badge">Plano base</span>
+              </div>
+              <ul class="feature-list">
+                <li>Texto</li>
+                <li>Produtos e servicos</li>
+                <li>Links</li>
+              </ul>
+            </article>
+
+            <article class="plan-card is-highlighted" id="professionalPlanCard">
+              <div class="plan-card-header">
+                <div>
+                  <h4>Profissional</h4>
+                  <p class="muted-copy">Mais recursos para um Atendimento mais completo.</p>
+                </div>
+                <span class="mini-badge mini-badge-success">Upgrade</span>
+              </div>
+              <ul class="feature-list">
+                <li>Ativar IA do Gemini</li>
+                <li>Limite de Até 3 imagens </li>
+                <li>1 áudio por Atendimento</li>
+                <li>Respostas mais inteligentes</li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="button-row">
+            <button id="plansUpgradeButton" class="secondary-button" type="button" data-upgrade-action>Fazer upgrade para Profissional</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="products">
+        <article class="card section-card">
+          <p class="eyebrow">Produtos e servicos</p>
+          <h3>Organize o que seu negocio oferece</h3>
+          <p class="muted-copy">Cadastre os itens principais. O sistema aproveita essas informacoes para montar o atendimento automatico.</p>
+
+          <div class="tab-switch" role="tablist" aria-label="Produtos e servicos">
+            <button id="showProductsTabButton" class="tab-switch-button active" type="button">Produtos</button>
+            <button id="showServicesTabButton" class="tab-switch-button" type="button">Servicos</button>
+          </div>
+
+          <div id="productsPanel" class="catalog-panel active">
+            <div class="section-subcard">
+              <h4>Produtos</h4>
+              <div id="productMediaNotice" class="feature-lock-inline hidden-view">
+                <p class="muted-copy">🔒 Disponivel no plano Profissional</p>
+                <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+              </div>
+              <div class="field-grid">
+                <label>Nome<input id="productName" type="text"></label>
+                <label>Preco<input id="productPrice" type="text"></label>
+                <label class="full-width">Descricao<textarea id="productDescription"></textarea></label>
+                <label class="full-width">Link<input id="productLink" type="text"></label>
+                <label class="full-width">Palavras-chave<input id="productKeywords" type="text" placeholder="site, sites, criar site, landing page"></label>
+                <div class="full-width">
+                  <div class="button-row">
+                    <button id="generateProductKeywordsButton" class="secondary-button" type="button">Gerar sugestoes</button>
+                  </div>
+                  <p class="field-help">Clique nas sugestoes para adicionar sem substituir as palavras-chave atuais.</p>
+                  <div id="productKeywordSuggestions" class="suggestion-row hidden-view"></div>
+                </div>
+                <label class="professional-media-field full-width hidden-view">
+                  Imagens do produto
+                  <input id="productImages" type="file" accept="image/*" multiple>
+                  <span id="productImagesStatus" class="field-help">Opcional. Envie ate 3 imagens.</span>
+                </label>
+              </div>
+              <div class="button-row">
+                <button id="addProductButton" class="primary-button" type="button">Adicionar produto</button>
+                <button id="cancelProductEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+              </div>
+              <ul id="productsList" class="item-list"></ul>
+            </div>
+          </div>
+
+          <div id="servicesPanel" class="catalog-panel">
+            <div class="section-subcard">
+              <h4>Servicos</h4>
+              <div id="serviceMediaNotice" class="feature-lock-inline hidden-view">
+                <p class="muted-copy">🔒 Disponivel no plano Profissional</p>
+                <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+              </div>
+              <div class="field-grid">
+                <label>Nome<input id="serviceName" type="text"></label>
+                <label>Preco<input id="servicePrice" type="text"></label>
+                <label class="full-width">Descricao<textarea id="serviceDescription"></textarea></label>
+                <label class="full-width">Link<input id="serviceLink" type="text"></label>
+                <label class="full-width">Palavras-chave<input id="serviceKeywords" type="text" placeholder="site, sites, criar site, landing page"></label>
+                <div class="full-width">
+                  <div class="button-row">
+                    <button id="generateServiceKeywordsButton" class="secondary-button" type="button">Gerar sugestoes</button>
+                  </div>
+                  <p class="field-help">Clique nas sugestoes para adicionar sem substituir as palavras-chave atuais.</p>
+                  <div id="serviceKeywordSuggestions" class="suggestion-row hidden-view"></div>
+                </div>
+                <label class="professional-media-field full-width hidden-view">
+                  Imagem do servico
+                  <input id="serviceImage" type="file" accept="image/*">
+                  <span id="serviceImageStatus" class="field-help">Opcional</span>
+                </label>
+              </div>
+              <div class="button-row">
+                <button id="addServiceButton" class="primary-button" type="button">Adicionar servico</button>
+                <button id="cancelServiceEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+              </div>
+              <ul id="servicesList" class="item-list"></ul>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="links">
+        <article class="card section-card">
+          <p class="eyebrow">Links</p>
+          <h3>Centralize seus atalhos principais</h3>
+          <p class="muted-copy">Inclua links importantes para facilitar o atendimento e as proximas acoes do cliente.</p>
+
+          <div class="field-grid">
+            <label>
+              Titulo
+              <input id="linkTitle" type="text" placeholder="Ex.: Instagram">
+            </label>
+            <label>
+              URL
+              <input id="linkUrl" type="text" placeholder="https://">
+            </label>
+            <label class="full-width">
+              Descricao
+              <textarea id="linkDescription" placeholder="Opcional"></textarea>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="addLinkButton" class="primary-button" type="button">Adicionar link</button>
+            <button id="cancelLinkEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+          </div>
+
+          <ul id="linksList" class="item-list"></ul>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="test">
+        <article class="card section-card">
+          <p class="eyebrow">Testar atendimento</p>
+          <h3>Veja como o atendimento automatico responderia</h3>
+          <p class="muted-copy">Escreva uma mensagem de exemplo para testar o que o cliente quis dizer e a resposta gerada.</p>
+
+          <div class="field-grid">
+            <label>
+              Nome do contato de teste
+              <input id="simulatorContactId" type="text" value="contato_demo">
+            </label>
+            <label class="full-width">
+              Mensagem recebida
+              <textarea id="simulatorMessage" placeholder="Ex.: quero ver os servicos"></textarea>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="simulateMessageButton" class="primary-button" type="button">Testar resposta</button>
+          </div>
+
+          <div class="simulator-output">
+            <p><strong>O que o cliente quis:</strong> <span id="simulatorIntent">-</span></p>
+            <p><strong>Resposta:</strong></p>
+            <pre id="simulatorReply">-</pre>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="settings">
+        <article class="card section-card">
+          <p class="eyebrow">Configuracoes do negocio</p>
+          <h3>Deixe seus dados principais sempre atualizados</h3>
+          <p class="muted-copy">Aqui voce ajusta apenas o que faz sentido para o seu negocio, sem campos tecnicos ou informacoes internas.</p>
+
+          <div class="settings-grid">
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Dados do negocio</h4>
+                  <p class="muted-copy">Atualize as informacoes principais usadas no painel e no atendimento automatico.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Situacao do atendimento automatico
+                  <select id="tenantActive">
+                    <option value="true">Ativo</option>
+                    <option value="false">Inativo</option>
+                  </select>
+                </label>
+                <label>
+                  Nome da empresa
+                  <input id="businessName" type="text">
+                </label>
+                <label>
+                  Nome do atendente
+                  <input id="attendantName" type="text">
+                </label>
+                <label>
+                  Tipo de negocio
+                  <input id="businessType" type="text">
+                </label>
+                <label class="full-width">
+                  Sobre o negocio
+                  <textarea id="businessDescription" placeholder="Ex.: horario de atendimento, cidade, especialidades e outras informacoes importantes."></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Alterar senha</h4>
+                  <p class="muted-copy">Escolha uma nova senha para entrar no sistema com mais facilidade e seguranca.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Nova senha
+                  <input id="newPassword" type="password" placeholder="Digite a nova senha">
+                </label>
+                <label>
+                  Confirmar nova senha
+                  <input id="confirmNewPassword" type="password" placeholder="Repita a nova senha">
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="updatePasswordButton" class="secondary-button" type="button">Atualizar senha</button>
+              </div>
+            </div>
+
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Ajustes extras do atendimento</h4>
+                  <p class="muted-copy">Use esta area somente se quiser ajustar o tempo de espera e o reinicio da conversa.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Tempo para reiniciar conversa
+                  <input id="stateTTL" type="number" min="1">
+                </label>
+                <label>
+                  Tempo de espera apos chamar atendimento
+                  <input id="handoffTimeout" type="number" min="1">
+                </label>
+              </div>
+            </div>
+
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Seu plano</h4>
+                  <p id="settingsPlanDescription" class="muted-copy">Seu plano atual: Essencial</p>
+                </div>
+                <button id="settingsUpgradeButton" class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
+              </div>
+            </div>
+          </div>
+
+          <input id="tenantId" type="hidden">
+
+          <div class="section-subcard advanced-menu-shell">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Configuracoes avancadas das respostas</h4>
+                <p class="muted-copy">Use esta area apenas se voce realmente quiser montar opcoes manualmente.</p>
+              </div>
+              <button id="toggleAdvancedMenuButton" class="neutral-button" type="button">Mostrar personalizacao</button>
+            </div>
+
+            <div id="advancedMenuPanel" class="advanced-menu-panel hidden-view">
+              <div class="status-highlight compact-highlight">
+                <span>Aviso</span>
+                <strong>Use apenas se quiser personalizar</strong>
+                <p class="muted-copy">O sistema cria automaticamente as opcoes principais com base nos produtos, servicos e links cadastrados.</p>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Nome da opcao
+                  <input id="menuLabel" type="text" placeholder="Ex.: Ver servicos">
+                </label>
+                <label>
+                  O que o atendimento automatico vai fazer
+                  <select id="menuType">
+                    <option value="products">Mostrar produtos automaticamente</option>
+                    <option value="services">Mostrar servicos automaticamente</option>
+                    <option value="links">Mostrar links automaticamente</option>
+                    <option value="handoff">Falar com atendimento</option>
+                    <option value="custom">Escrever resposta personalizada</option>
+                  </select>
+                </label>
+                <label class="full-width">
+                  Palavras que ativam
+                  <input id="menuAliases" type="text" placeholder="Ex.: produtos, servicos, atendimento">
+                </label>
+                <label class="full-width hidden-view" id="menuCustomReplyField">
+                  Resposta personalizada
+                  <textarea id="menuCustomReply" placeholder="Escreva a resposta que o atendimento automatico deve enviar"></textarea>
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="addMenuButton" class="primary-button" type="button">Adicionar opcao</button>
+                <button id="cancelMenuEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+              </div>
+
+              <div id="menuOptionsList" class="menu-cards"></div>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="tenant-edit.js"></script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+const {
+  buildDefaultTenant,
+  deleteTenantFile,
+  listTenants,
+  readTenant,
+  tenantExists,
+  updateTenant,
+  writeTenant
+} = require("../tenancy/tenantConfigStore");
+const { deleteAuthAccountByTenantId, findAuthAccountByTenantId } = require("../tenancy/authAccountStore");
+const { deleteSessionFile } = require("../tenancy/tenantSessionStore");
+const { deleteTenantStates } = require("../tenancy/tenantStateStore");
+const { deleteSessionArtifacts } = require("../bot/whatsappSessions");
+const { assertTenantId } = require("../tenancy/tenantResolver");
+
+function listTenantSummaries() {
+  return listTenants()
+    .filter((tenant) => String(tenant.type || "client").toLowerCase() === "client")
+    .map((tenant) => {
+    const account = findAuthAccountByTenantId(tenant.tenantId);
+
+    return {
+      tenantId: tenant.tenantId,
+      type: tenant.type || "client",
+      isTest: Boolean(tenant.isTest),
+      active: tenant.active,
+      plan: tenant.plan,
+      subscriptionStatus: tenant.subscriptionStatus,
+      onboardingCompleted: tenant.onboardingCompleted,
+      businessName: tenant.business.name || account?.businessName || "",
+      businessType: tenant.business.type,
+      attendantName: tenant.business.attendantName,
+      customerName: account?.name || tenant.business.attendantName || "",
+      whatsappConnected: tenant.whatsapp.connected,
+      whatsappNumber: account?.whatsapp || tenant.whatsapp.number,
+      activationStatus: account?.activationStatus || "pending",
+      updatedAt: tenant.meta.updatedAt
+    };
+    });
+}
+
+function createTenant(payload = {}) {
+  const tenantId = assertTenantId(payload.tenantId);
+
+  if (tenantExists(tenantId)) {
+    const error = new Error("tenant_ja_existe");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return writeTenant(tenantId, buildDefaultTenant(tenantId, payload));
+}
+
+function getTenant(tenantId) {
+  return readTenant(tenantId);
+}
+
+function saveTenant(tenantId, payload = {}) {
+  return updateTenant(tenantId, payload);
+}
+
+function disableTenant(tenantId) {
+  return updateTenant(tenantId, {
+    active: false
+  });
+}
+
+async function deleteTenantPermanently(tenantId) {
+  const resolvedTenantId = assertTenantId(tenantId);
+
+  if (!tenantExists(resolvedTenantId)) {
+    const error = new Error("tenant_nao_encontrado");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  await deleteSessionArtifacts(resolvedTenantId);
+  deleteTenantFile(resolvedTenantId);
+  deleteSessionFile(resolvedTenantId);
+  deleteTenantStates(resolvedTenantId);
+  deleteAuthAccountByTenantId(resolvedTenantId);
+
+  return {
+    tenantId: resolvedTenantId,
+    deleted: true
+  };
+}
+
+module.exports = {
+  createTenant,
+  deleteTenantPermanently,
+  disableTenant,
+  getTenant,
+  listTenantSummaries,
+  saveTenant
+};

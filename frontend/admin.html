@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiagenda - Admin</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">KiAgenda Assistente</p>
+        <h1>Painel Admin</h1>
+        <p class="hero-text">Gerencie planos e status de assinatura dos clientes para teste local.</p>
+      </div>
+      <div class="button-row">
+        <a class="secondary-button link-button" href="index.html">Inicio</a>
+        <button id="adminLogoutButton" class="neutral-button hidden-view" type="button">Sair</button>
+      </div>
+    </header>
+
+    <p id="adminFeedbackMessage" class="feedback" aria-live="polite"></p>
+
+    <section id="adminLoginCard" class="card auth-card-centered">
+      <div class="auth-brand">
+        <span class="brand-badge">Admin local</span>
+        <h2 class="auth-title">Entrar como administrador</h2>
+        <p class="hero-text">Use o login admin local para liberar a area de planos.</p>
+      </div>
+
+      <form id="adminLoginForm" class="auth-form">
+        <label>
+          Login
+          <input id="adminLogin" type="text" placeholder="admin">
+        </label>
+        <label>
+          Senha
+          <input id="adminPassword" type="password" placeholder="123">
+        </label>
+        <button class="primary-button" type="submit">Entrar no admin</button>
+      </form>
+    </section>
+
+    <section id="adminPanel" class="panel-grid hidden-view">
+      <section class="card">
+        <h2>Clientes</h2>
+        <p class="muted-copy">Escolha um cliente para ajustar plano e assinatura.</p>
+        <div id="adminTenantsList" class="tenant-list admin-tenant-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>C&oacute;digos de ativa&ccedil;&atilde;o</h2>
+        <p class="muted-copy">Gere c&oacute;digos para liberar acesso de clientes e acompanhe validade, plano e usos.</p>
+
+        <form id="activationCodeForm" class="auth-form">
+          <div class="field-grid">
+            <label>
+              Plano associado
+              <select id="activationCodePlan">
+                <option value="essential">Essencial</option>
+                <option value="professional">Profissional</option>
+              </select>
+            </label>
+            <label>
+              Validade
+              <select id="activationCodeValidity">
+                <option value="15">15 dias</option>
+                <option value="7">7 dias</option>
+                <option value="30">30 dias</option>
+                <option value="none">Sem expira&ccedil;&atilde;o</option>
+              </select>
+            </label>
+            <label>
+              Quantidade de usos
+              <select id="activationCodeUsage">
+                <option value="single">1 uso</option>
+                <option value="multiple">M&uacute;ltiplos usos</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button class="primary-button" type="submit">Gerar novo c&oacute;digo</button>
+          </div>
+        </form>
+
+        <div class="field-grid admin-filters">
+          <label>
+            Filtrar por status
+            <select id="activationCodeStatusFilter">
+              <option value="all">Todos</option>
+              <option value="active">Ativos</option>
+              <option value="inactive">Inativos</option>
+              <option value="expired">Expirados</option>
+              <option value="exhausted">Sem usos</option>
+            </select>
+          </label>
+          <label>
+            Buscar c&oacute;digo
+            <input id="activationCodeSearch" type="text" placeholder="Ex.: ABCD1234">
+          </label>
+        </div>
+
+        <div id="activationCodePreview" class="admin-plan-editor hidden-view"></div>
+        <div id="activationCodesList" class="tenant-list admin-tenant-list"></div>
+      </section>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

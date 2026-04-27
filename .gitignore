@@ -1,0 +1,27 @@
+## Dependencias
+node_modules/
+
+## Sessoes e cache do WhatsApp
+.wwebjs_auth/
+.wwebjs_cache/
+
+## Variaveis de ambiente
+.env
+.env.*
+
+## Logs
+logs/
+*.log
+
+## Uploads temporarios
+uploads/
+
+## Sistema operacional
+.DS_Store
+Thumbs.db
+
+## Dados locais
+data/
+
+## Ferramentas locais
+.continue/

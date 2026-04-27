@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robo de Triagem para WhatsApp</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="auth-page-loading">
+  <div class="auth-page">
+    <div class="auth-shell auth-shell-single">
+      <section class="auth-card auth-card-centered">
+        <div class="auth-brand">
+          <span class="brand-badge">KiAgenda Assistente</span>
+          <h1 class="auth-title">Rob&ocirc; de Triagem para WhatsApp</h1>
+          <p class="hero-text">Organize seu atendimento autom&aacute;tico de forma simples.</p>
+        </div>
+
+        <p id="authFeedback" class="feedback auth-feedback" aria-live="polite"></p>
+
+        <section id="loginView">
+          <form id="loginForm" class="auth-form">
+            <p class="auth-form-title">Entre para continuar</p>
+            <label>
+              N&uacute;mero do WhatsApp
+              <input id="loginWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="username">
+            </label>
+            <label>
+              Senha
+              <input id="loginPassword" type="password" placeholder="Digite sua senha" autocomplete="current-password">
+            </label>
+            <div class="auth-actions">
+              <button class="primary-button auth-submit" type="submit">Entrar</button>
+            </div>
+          </form>
+
+          <div class="auth-links auth-links-vertical">
+            <button id="openRegisterButton" class="link-button auth-link-button" type="button">Criar conta</button>
+            <button id="firstAccessButton" class="link-button auth-link-button" type="button">Primeiro acesso</button>
+            <button id="forgotPasswordButton" class="link-button auth-link-button muted" type="button">Esqueci minha senha</button>
+          </div>
+        </section>
+
+        <section id="firstAccessView" class="hidden-view">
+          <form id="firstAccessForm" class="auth-form">
+            <p class="auth-form-title">Primeiro acesso</p>
+            <p class="muted-copy">Se seu cliente ja foi cadastrado no sistema, crie agora sua senha de acesso.</p>
+            <label>
+              WhatsApp cadastrado
+              <input id="firstAccessWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="tel">
+            </label>
+            <label>
+              Email
+              <input id="firstAccessEmail" type="email" placeholder="voce@email.com" autocomplete="email">
+            </label>
+            <label>
+              Nova senha
+              <input id="firstAccessPassword" type="password" placeholder="Crie sua senha" autocomplete="new-password">
+            </label>
+            <label>
+              Confirmar senha
+              <input id="firstAccessConfirmPassword" type="password" placeholder="Repita a senha" autocomplete="new-password">
+            </label>
+            <div class="auth-actions">
+              <button class="secondary-button auth-submit" type="submit">Criar acesso</button>
+            </div>
+          </form>
+
+          <div class="auth-links auth-links-single">
+            <button id="backToLoginFromFirstAccessButton" class="link-button auth-link-button" type="button">Voltar para login</button>
+          </div>
+        </section>
+
+        <section id="forgotPasswordView" class="hidden-view">
+          <form id="forgotPasswordForm" class="auth-form">
+            <p class="auth-form-title">Recuperar senha</p>
+            <label>
+              WhatsApp cadastrado
+              <input id="forgotPasswordWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="tel">
+            </label>
+            <div class="auth-actions">
+              <button class="secondary-button auth-submit" type="submit">Enviar c&oacute;digo</button>
+            </div>
+          </form>
+
+          <div id="forgotPasswordDevPanel" class="auth-dev-panel hidden-view">
+            <p class="auth-dev-title">Ambiente local</p>
+            <p class="muted-copy">Se o envio pelo WhatsApp n&atilde;o estiver dispon&iacute;vel, use o c&oacute;digo abaixo para teste.</p>
+            <p id="forgotPasswordDevCode" class="auth-dev-token"></p>
+          </div>
+
+          <div class="auth-links auth-links-single">
+            <button id="backToLoginFromForgotButton" class="link-button auth-link-button" type="button">Voltar para login</button>
+          </div>
+        </section>
+
+        <section id="registerView" class="hidden-view">
+          <form id="registerForm" class="auth-form">
+            <p class="auth-form-title">Crie sua conta</p>
+            <div class="field-grid">
+              <label>
+                Nome
+                <input id="registerName" type="text" placeholder="Seu nome" autocomplete="name">
+              </label>
+              <label>
+                Nome do neg&oacute;cio
+                <input id="registerBusinessName" type="text" placeholder="Ex.: Cafe Princesa Mineira" autocomplete="organization">
+              </label>
+              <label>
+                WhatsApp
+                <input id="registerWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="tel">
+              </label>
+              <label>
+                Email
+                <input id="registerEmail" type="email" placeholder="voce@email.com" autocomplete="email">
+              </label>
+              <label>
+                Senha
+                <input id="registerPassword" type="password" placeholder="Crie uma senha" autocomplete="new-password">
+              </label>
+              <label>
+                Confirmar senha
+                <input id="registerPasswordConfirm" type="password" placeholder="Repita a senha" autocomplete="new-password">
+              </label>
+            </div>
+
+            <div class="auth-actions">
+              <button class="secondary-button auth-submit" type="submit">Criar conta</button>
+            </div>
+          </form>
+
+          <div class="auth-links auth-links-single">
+            <button id="backToLoginButton" class="link-button auth-link-button" type="button">J&aacute; tenho conta</button>
+          </div>
+
+          <form id="registerVerificationForm" class="auth-form auth-alt-form hidden-view">
+            <p class="auth-form-title">Confirmar WhatsApp</p>
+            <p class="muted-copy">Enviamos um c&oacute;digo para seu WhatsApp. Digite abaixo para confirmar sua conta.</p>
+            <label>
+              C&oacute;digo recebido
+              <input id="registerVerificationCode" type="text" inputmode="numeric" maxlength="6" placeholder="Digite o c&oacute;digo de 6 d&iacute;gitos">
+            </label>
+            <div class="auth-actions">
+              <button class="primary-button auth-submit" type="submit">Confirmar conta</button>
+              <button id="resendRegisterVerificationButton" class="neutral-button auth-submit" type="button">Reenviar c&oacute;digo</button>
+            </div>
+          </form>
+
+          <div id="registerVerificationDevPanel" class="auth-dev-panel hidden-view">
+            <p class="auth-dev-title">Ambiente local</p>
+            <p class="muted-copy">Se o WhatsApp central estiver indispon&iacute;vel, use o c&oacute;digo abaixo para teste.</p>
+            <p id="registerVerificationDevCode" class="auth-dev-token"></p>
+          </div>
+        </section>
+
+        <section id="resetPasswordView" class="hidden-view">
+          <form id="verifyResetCodeForm" class="auth-form">
+            <p class="auth-form-title">Redefinir senha</p>
+            <label>
+              C&oacute;digo recebido
+              <input id="resetPasswordCode" type="text" inputmode="numeric" maxlength="6" placeholder="Digite o c&oacute;digo de 6 d&iacute;gitos">
+            </label>
+            <div class="auth-actions">
+              <button class="neutral-button auth-submit" type="submit">Verificar c&oacute;digo</button>
+            </div>
+          </form>
+
+          <form id="resetPasswordForm" class="auth-form hidden-view">
+            <label>
+              Nova senha
+              <input id="resetPasswordNew" type="password" placeholder="Digite a nova senha" autocomplete="new-password">
+            </label>
+            <label>
+              Confirmar nova senha
+              <input id="resetPasswordConfirm" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
+            </label>
+            <div class="auth-actions">
+              <button class="primary-button auth-submit" type="submit">Atualizar senha</button>
+            </div>
+          </form>
+
+          <div class="auth-links auth-links-single">
+            <button id="backToLoginFromResetButton" class="link-button auth-link-button" type="button">Voltar para login</button>
+          </div>
+        </section>
+
+        <section id="activationView" class="hidden-view">
+          <form id="activationForm" class="auth-form activation-form-card">
+            <p class="activation-eyebrow">KiAgenda Assistente</p>
+            <h2 class="activation-title">Ative sua conta</h2>
+            <p class="activation-copy">Digite o c&oacute;digo de ativa&ccedil;&atilde;o recebido para liberar seu acesso ao KiAgenda Assistente.</p>
+            <label>
+              C&oacute;digo de ativa&ccedil;&atilde;o
+              <input id="activationCode" type="text" placeholder="Digite o c&oacute;digo" autocomplete="one-time-code">
+            </label>
+            <div class="auth-actions">
+              <button class="primary-button auth-submit activation-submit" type="submit">Ativar conta</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="index.js"></script>
+</body>
+</html>

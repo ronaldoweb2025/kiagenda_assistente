@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kiagenda - Configuracao Inicial</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page">
+    <header class="hero onboarding-hero">
+      <div>
+        <p class="eyebrow">Primeiro acesso</p>
+        <h1 id="onboardingTitle">Configure seu atendimento</h1>
+        <p class="hero-text">
+          Siga este passo a passo para deixar seu atendimento pronto de forma simples e rapida.
+        </p>
+      </div>
+      <div class="button-row">
+        <a class="secondary-button link-button" id="advancedPanelLink" href="tenant-edit.html">Abrir painel completo</a>
+      </div>
+    </header>
+
+    <p id="onboardingFeedback" class="feedback" aria-live="polite"></p>
+
+    <section class="card onboarding-shell">
+      <div class="progress-block">
+        <div class="progress-header">
+          <span id="progressText">Passo 1 de 5</span>
+          <span id="progressStepTitle">Dados do negocio</span>
+        </div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div class="onboarding-steps">
+        <button class="onboarding-step active" type="button" data-step-target="1">1. Dados do negocio</button>
+        <button class="onboarding-step" type="button" data-step-target="2">2. WhatsApp</button>
+        <button class="onboarding-step" type="button" data-step-target="3">3. Produtos ou servicos</button>
+        <button class="onboarding-step" type="button" data-step-target="4">4. Links importantes</button>
+        <button class="onboarding-step" type="button" data-step-target="5">5. Revisar e ativar</button>
+      </div>
+
+      <section class="onboarding-panel" data-step="1">
+        <p class="eyebrow">Passo 1</p>
+        <h2>Dados do negocio</h2>
+        <p class="muted-copy">Essas informacoes ajudam o atendimento automatico a se apresentar de forma mais natural.</p>
+        <div class="template-section">
+          <div class="template-header">
+            <div>
+              <h3>Modelos de atendimento</h3>
+              <p class="muted-copy">Escolha um modelo inicial para acelerar sua configuracao.</p>
+            </div>
+            <div id="selectedModelBadge" class="selected-model-badge">Nenhum modelo selecionado</div>
+          </div>
+          <div id="botModelsGrid" class="template-grid">
+            <button class="template-card model-card model-card-standard" type="button" data-model-id="loja_online">
+              <span class="template-title">Loja online</span>
+              <span class="template-copy">Produtos, links de compra e atendimento rapido.</span>
+            </button>
+            <button class="template-card model-card model-card-standard" type="button" data-model-id="barbearia">
+              <span class="template-title">Barbearia</span>
+              <span class="template-copy">Servicos, horarios e contato com a equipe.</span>
+            </button>
+            <button class="template-card model-card model-card-standard" type="button" data-model-id="clinica">
+              <span class="template-title">Clinica</span>
+              <span class="template-copy">Atendimento, servicos e orientacao inicial.</span>
+            </button>
+            <button class="template-card model-card model-card-standard" type="button" data-model-id="restaurante">
+              <span class="template-title">Restaurante</span>
+              <span class="template-copy">Cardapio, pedidos e entrega ou retirada.</span>
+            </button>
+            <button class="template-card model-card model-card-standard" type="button" data-model-id="servicos_gerais">
+              <span class="template-title">Servicos gerais</span>
+              <span class="template-copy">Apresentacao, servicos e atendimento humano.</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="template-section">
+          <div class="template-header">
+            <div>
+              <h3>Modelos exclusivos KiAgenda</h3>
+              <p class="muted-copy">Esses modelos ficam disponiveis quando voce conecta sua conta KiAgenda.</p>
+            </div>
+          </div>
+          <div class="template-grid template-grid-exclusive">
+            <article class="template-card template-card-kiagenda model-card" data-model-id="kiagenda_servicos">
+              <span class="template-badge">Exclusivo KiAgenda</span>
+              <span class="template-title">KiAgenda Servicos</span>
+              <span class="template-copy">Agendamentos, horarios e servicos integrados.</span>
+              <div class="button-row template-card-actions">
+                <button class="neutral-button template-inline-button" type="button" data-open-kiagenda-modal="kiagenda_servicos">Modo KiAgenda</button>
+                <button class="primary-button template-inline-button" type="button" data-open-kiagenda-modal="kiagenda_servicos">Conectar KiAgenda</button>
+              </div>
+            </article>
+            <article class="template-card template-card-kiagenda model-card" data-model-id="kiagenda_delivery">
+              <span class="template-badge">Exclusivo KiAgenda</span>
+              <span class="template-title">KiAgenda Delivery</span>
+              <span class="template-copy">Cardapio, pedidos e fluxo de entrega integrado.</span>
+              <div class="button-row template-card-actions">
+                <button class="neutral-button template-inline-button" type="button" data-open-kiagenda-modal="kiagenda_delivery">Modo KiAgenda</button>
+                <button class="primary-button template-inline-button" type="button" data-open-kiagenda-modal="kiagenda_delivery">Conectar KiAgenda</button>
+              </div>
+            </article>
+          </div>
+        </div>
+        <div class="field-grid">
+          <label>
+            Nome da empresa
+            <input id="businessNameInput" type="text" placeholder="Ex.: Cafe Princesa Mineira">
+          </label>
+          <label>
+            Nome do atendente
+            <input id="attendantNameInput" type="text" placeholder="Ex.: Ana, Atendimento">
+          </label>
+          <label>
+            Tipo de negocio
+            <input id="businessTypeInput" type="text" placeholder="Ex.: cafeteria, clinica, loja">
+          </label>
+          <label>
+            Cidade/estado
+            <input id="businessLocationInput" type="text" placeholder="Ex.: Pouso Alegre/MG">
+          </label>
+        </div>
+      </section>
+
+      <section class="onboarding-panel hidden-view" data-step="2">
+        <p class="eyebrow">Passo 2</p>
+        <h2>Conectar WhatsApp</h2>
+        <p class="muted-copy">Informe o numero e gere o QR Code para conectar o atendimento.</p>
+        <div class="field-grid">
+          <label class="full-width">
+            Numero do WhatsApp
+            <input id="whatsappNumberInput" type="text" placeholder="Ex.: 5535999999999">
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="connectWhatsappButtonSimple" class="primary-button" type="button">Conectar WhatsApp</button>
+          <button id="refreshWhatsappStatusButton" class="secondary-button" type="button">Atualizar status</button>
+        </div>
+        <div class="status-highlight">
+          <span>Status atual</span>
+          <strong id="whatsappStatusText">Desconectado</strong>
+        </div>
+        <div id="whatsappQrPanel" class="qr-panel" aria-live="polite">
+          <p class="muted-copy">O QR Code vai aparecer aqui quando a conexao for iniciada.</p>
+        </div>
+      </section>
+
+      <section class="onboarding-panel hidden-view" data-step="3">
+        <p class="eyebrow">Passo 3</p>
+        <h2>Produtos ou servicos</h2>
+        <p class="muted-copy">Adicione os principais itens que voce quer mostrar para seus clientes.</p>
+        <div class="field-grid">
+          <label>
+            O que voce quer cadastrar?
+            <select id="itemKindInput">
+              <option value="product">Produto</option>
+              <option value="service">Servico</option>
+            </select>
+          </label>
+          <label>
+            Nome
+            <input id="itemNameInput" type="text" placeholder="Ex.: Cafe especial, Consulta inicial">
+          </label>
+          <label>
+            Preco
+            <input id="itemPriceInput" type="text" placeholder="Opcional">
+          </label>
+          <label>
+            Link
+            <input id="itemLinkInput" type="text" placeholder="Opcional">
+          </label>
+          <label class="full-width">
+            Descricao curta
+            <textarea id="itemDescriptionInput" placeholder="Opcional"></textarea>
+          </label>
+          <label class="full-width">
+            Palavras-chave
+            <input id="itemKeywordsInput" type="text" placeholder="site, sites, criar site, landing page">
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="addItemButton" class="primary-button" type="button">Adicionar item</button>
+        </div>
+        <div class="quick-double-list">
+          <div>
+            <h3>Produtos</h3>
+            <ul id="productsPreviewList" class="item-list"></ul>
+          </div>
+          <div>
+            <h3>Servicos</h3>
+            <ul id="servicesPreviewList" class="item-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="onboarding-panel hidden-view" data-step="4">
+        <p class="eyebrow">Passo 4</p>
+        <h2>Links importantes</h2>
+        <p class="muted-copy">Adicione atalhos que ajudam seus clientes a chegar mais rapido no que precisam.</p>
+        <div class="suggestion-row">
+          <span class="suggestion-chip">Site</span>
+          <span class="suggestion-chip">Loja online</span>
+          <span class="suggestion-chip">Instagram</span>
+          <span class="suggestion-chip">Agendamento</span>
+        </div>
+        <div class="field-grid">
+          <label>
+            Titulo
+            <input id="linkTitleInput" type="text" placeholder="Ex.: Instagram, Cardapio, Agendamento">
+          </label>
+          <label>
+            URL
+            <input id="linkUrlInput" type="text" placeholder="https://">
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="addLinkButtonSimple" class="primary-button" type="button">Adicionar link</button>
+        </div>
+        <ul id="linksPreviewList" class="item-list"></ul>
+      </section>
+
+      <section class="onboarding-panel hidden-view" data-step="5">
+        <p class="eyebrow">Passo 5</p>
+        <h2>Revisar e ativar</h2>
+        <p class="muted-copy">Confira os dados antes de ativar o atendimento.</p>
+        <div id="reviewGrid" class="review-grid"></div>
+        <div class="activation-box">
+          <h3>O que vai acontecer ao ativar</h3>
+          <p>Vamos salvar suas informacoes, criar um menu inicial e deixar mensagens padrao prontas para o seu atendimento.</p>
+        </div>
+      </section>
+
+      <div class="wizard-footer onboarding-footer">
+        <div class="button-row">
+          <button id="prevStepButton" class="secondary-button" type="button">Voltar</button>
+          <button id="nextStepButton" class="primary-button" type="button">Continuar</button>
+          <button id="activateButton" class="primary-button hidden-view" type="button">Ativar atendimento</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="kiagendaModal" class="modal-backdrop hidden-view" aria-hidden="true">
+    <div class="modal-card">
+      <p class="eyebrow">Exclusivo KiAgenda</p>
+      <h2 id="kiagendaModalTitle">Conecte sua conta KiAgenda</h2>
+      <p class="muted-copy">
+        Este modelo e exclusivo para clientes KiAgenda. Conecte sua conta para ativar.
+      </p>
+      <label>
+        Token/Chave KiAgenda
+        <input id="kiagendaTokenInput" type="text" placeholder="Cole sua chave aqui">
+      </label>
+      <div class="status-highlight compact-highlight">
+        <span>Status da conta</span>
+        <strong id="kiagendaAccountStatus">Nao conectada</strong>
+      </div>
+      <div class="button-row">
+        <button id="connectKiagendaButton" class="primary-button" type="button">Conectar KiAgenda</button>
+        <button id="closeKiagendaModalButton" class="secondary-button" type="button">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="onboarding.js"></script>
+</body>
+</html>
