@@ -16,6 +16,7 @@ function buildDefaultSession(tenantId) {
     status: "disconnected",
     sessionId: "",
     number: "",
+    connectedWhatsappNumber: "",
     provider: "whatsapp-web.js",
     qr: "",
     qrCode: "",
@@ -55,6 +56,10 @@ function writeSession(tenantId, sessionData) {
     ...sessionData,
     qr,
     qrCode: qr || "",
+    connectedWhatsappNumber:
+      sessionData?.connectedWhatsappNumber !== undefined
+        ? sessionData.connectedWhatsappNumber
+        : sessionData?.number || "",
     tenantId: resolvedTenantId,
     updatedAt: new Date().toISOString()
   };

@@ -1,6 +1,7 @@
 const {
   getTenantSession,
   resetTenantSession,
+  resetTenantWhatsappSession,
   startTenantSession,
   stopTenantSession
 } = require("../services/tenantSessionService");
@@ -45,9 +46,22 @@ async function resetSession(req, res, next) {
   }
 }
 
+async function resetWhatsappSession(req, res, next) {
+  try {
+    const session = await resetTenantWhatsappSession(req.params.tenantId);
+    res.json({
+      message: "Sessao do WhatsApp de atendimento reiniciada com sucesso.",
+      data: session
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getSession,
   resetSession,
+  resetWhatsappSession,
   startSession,
   stopSession
 };

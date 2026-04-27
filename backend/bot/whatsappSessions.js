@@ -96,7 +96,7 @@ function persistSession(tenantId, partialSession = {}) {
   updateTenant(resolvedTenantId, {
     whatsapp: {
       connected: Boolean(nextSession.connected),
-      number: nextSession.number || "",
+      number: nextSession.connectedWhatsappNumber || nextSession.number || "",
       sessionId: nextSession.sessionId || ""
     }
   });
@@ -466,6 +466,7 @@ function registerClientEvents(client, entry, sessionId) {
       qrRaw: "",
       sessionId,
       number: buildPhoneNumber(client),
+      connectedWhatsappNumber: buildPhoneNumber(client),
       reconnectAttempts: 0,
       lastDisconnectAt: null,
       nextReconnectAt: null,
@@ -571,7 +572,8 @@ async function startSession(tenantId, options = {}) {
     qrCode: "",
     qrRaw: "",
     sessionId,
-    number: options.number || currentSession.number || "",
+    number: currentSession.connectedWhatsappNumber || currentSession.number || "",
+    connectedWhatsappNumber: currentSession.connectedWhatsappNumber || currentSession.number || "",
     nextReconnectAt: null,
     manualStop: false,
     startedAt: currentSession.startedAt || new Date().toISOString(),
@@ -633,6 +635,7 @@ async function stopSession(tenantId) {
     qr: "",
     qrCode: "",
     qrRaw: "",
+    connectedWhatsappNumber: "",
     manualStop: true,
     reconnectAttempts: 0,
     lastDisconnectAt: null,
@@ -681,6 +684,8 @@ async function resetSession(tenantId) {
     qr: "",
     qrCode: "",
     qrRaw: "",
+    number: "",
+    connectedWhatsappNumber: "",
     manualStop: true,
     reconnectAttempts: 0,
     lastDisconnectAt: null,

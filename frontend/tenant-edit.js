@@ -59,9 +59,11 @@ const dashboardElements = {
   overviewPlanBadge: document.getElementById("overviewPlanBadge"),
   planFeaturesList: document.getElementById("planFeaturesList"),
   whatsappStatus: document.getElementById("whatsappStatus"),
-  whatsappNumber: document.getElementById("whatsappNumber"),
+  accountWhatsappNumber: document.getElementById("accountWhatsappNumber"),
+  connectedWhatsappNumber: document.getElementById("connectedWhatsappNumber"),
   whatsappSessionId: document.getElementById("whatsappSessionId"),
   connectWhatsappButton: document.getElementById("connectWhatsappButton"),
+  resetWhatsappSessionButton: document.getElementById("resetWhatsappSessionButton"),
   disconnectWhatsappButton: document.getElementById("disconnectWhatsappButton"),
   refreshWhatsappButton: document.getElementById("refreshWhatsappButton"),
   whatsappQrPanel: document.getElementById("whatsappQrPanel"),
@@ -330,6 +332,19 @@ function getBotStatusLabel() {
 
 function getBotStatusTone() {
   return getBotEnabled() ? "positive" : "negative";
+}
+
+function getAccountWhatsappNumber() {
+  return getAuthSessionForTenant()?.whatsapp || "";
+}
+
+function getConnectedWhatsappNumber() {
+  return (
+    dashboardState.session?.connectedWhatsappNumber ||
+    dashboardState.session?.number ||
+    dashboardState.tenant?.whatsapp?.number ||
+    ""
+  );
 }
 
 function applyStatusTone(element, tone) {
@@ -1356,7 +1371,8 @@ function renderHeader() {
 function renderWhatsapp() {
   dashboardElements.whatsappStatus.textContent = getWhatsappStatusLabel(dashboardState.session);
   applyStatusTone(dashboardElements.whatsappStatus, getWhatsappStatusTone(dashboardState.session));
-  dashboardElements.whatsappNumber.value = dashboardState.tenant.whatsapp.number || "";
+  dashboardElements.accountWhatsappNumber.value = getAccountWhatsappNumber();
+  dashboardElements.connectedWhatsappNumber.value = getConnectedWhatsappNumber();
   dashboardElements.whatsappSessionId.value =
     dashboardState.tenant.whatsapp.sessionId || dashboardState.session?.sessionId || `${dashboardState.tenantId}-session`;
   renderQrPanel();
@@ -1740,7 +1756,6 @@ function syncFormToState() {
   dashboardState.tenant.business.description = dashboardElements.businessDescription.value.trim();
   dashboardState.tenant.settings.stateTTL = Number(dashboardElements.stateTTL.value || 60);
   dashboardState.tenant.settings.handoffTimeout = Number(dashboardElements.handoffTimeout.value || 30);
-  dashboardState.tenant.whatsapp.number = dashboardElements.whatsappNumber.value.trim();
   dashboardState.tenant.whatsapp.sessionId = dashboardElements.whatsappSessionId.value.trim() || `${dashboardState.tenantId}-session`;
   dashboardState.tenant.botModel = dashboardElements.botModelSelect.value;
   dashboardState.tenant.integration = dashboardState.tenant.integration || {};
@@ -1764,7 +1779,7 @@ function buildPayload() {
     business: { ...dashboardState.tenant.business },
     whatsapp: {
       connected: Boolean(dashboardState.session?.connected),
-      number: dashboardState.tenant.whatsapp.number,
+      number: getConnectedWhatsappNumber(),
       sessionId: dashboardState.tenant.whatsapp.sessionId
     },
     products: dashboardState.tenant.products,
@@ -1786,6 +1801,7 @@ async function refreshSession() {
       connected: false,
       status: "disconnected",
       number: dashboardState.tenant.whatsapp.number || "",
+      connectedWhatsappNumber: dashboardState.tenant.whatsapp.number || "",
       sessionId: dashboardState.tenant.whatsapp.sessionId || `${dashboardState.tenantId}-session`,
       qr: ""
     };
@@ -1864,16 +1880,12 @@ function logout() {
 }
 
 async function startWhatsappSession() {
-  syncFormToState();
-  await saveTenant();
-
   const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/session/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      number: dashboardState.tenant.whatsapp.number,
       sessionId: dashboardState.tenant.whatsapp.sessionId
     })
   });
@@ -1881,6 +1893,28 @@ async function startWhatsappSession() {
   dashboardState.session = response.data;
   await refreshSession();
   setFeedback(response.message || "Conexao iniciada com sucesso.");
+  await pollSession();
+}
+
+async function resetWhatsappSession() {
+  const confirmed = window.confirm(
+    "Isso vai desconectar o WhatsApp atual e apagar a sessao salva. Depois voce precisara escanear o QR Code com o novo numero."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/whatsapp/reset-session`, {
+    method: "POST"
+  });
+
+  dashboardState.session = response.data;
+  dashboardState.tenant.whatsapp.connected = false;
+  dashboardState.tenant.whatsapp.number = "";
+  stopSessionPolling();
+  await refreshSession();
+  setFeedback(response.message || "Sessao do WhatsApp de atendimento reiniciada com sucesso.");
   await pollSession();
 }
 
@@ -1956,6 +1990,7 @@ async function loadDashboard() {
     connected: false,
     status: "disconnected",
     number: tenant.whatsapp?.number || "",
+    connectedWhatsappNumber: tenant.whatsapp?.number || "",
     sessionId: tenant.whatsapp?.sessionId || `${dashboardState.tenantId}-session`,
     qr: ""
   };
@@ -1985,6 +2020,7 @@ dashboardElements.overviewBotToggleButton.addEventListener("click", () => runAct
 dashboardElements.overviewTestButton.addEventListener("click", () => showSection("test"));
 dashboardElements.saveConfigButton.addEventListener("click", () => runAction(saveTenant));
 dashboardElements.connectWhatsappButton.addEventListener("click", () => runAction(startWhatsappSession));
+dashboardElements.resetWhatsappSessionButton.addEventListener("click", () => runAction(resetWhatsappSession));
 dashboardElements.disconnectWhatsappButton.addEventListener("click", () => runAction(stopWhatsappSession));
 dashboardElements.refreshWhatsappButton.addEventListener("click", () => runAction(refreshSession));
 dashboardElements.showProductsTabButton.addEventListener("click", () => setCatalogTab("products"));

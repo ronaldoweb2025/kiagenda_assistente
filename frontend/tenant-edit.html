@@ -121,15 +121,22 @@
               <strong id="whatsappStatus">Desconectado</strong>
             </div>
             <label>
-              Numero do WhatsApp
-              <input id="whatsappNumber" type="text" placeholder="Ex.: 5535999999999">
+              WhatsApp da conta
+              <input id="accountWhatsappNumber" type="text" readonly>
+            </label>
+            <label>
+              WhatsApp do atendimento conectado
+              <input id="connectedWhatsappNumber" type="text" readonly placeholder="Sera preenchido apos conectar">
             </label>
           </div>
 
           <input id="whatsappSessionId" type="hidden">
 
+          <p class="field-help">O WhatsApp da conta e usado para login, verificacao e recuperacao de senha. O numero do atendimento e o que voce conecta via QR Code.</p>
+
           <div class="button-row">
             <button id="connectWhatsappButton" class="secondary-button" type="button">Conectar WhatsApp</button>
+            <button id="resetWhatsappSessionButton" class="secondary-button" type="button">Trocar numero do atendimento</button>
             <button id="disconnectWhatsappButton" class="neutral-button" type="button">Desconectar</button>
             <button id="refreshWhatsappButton" class="neutral-button" type="button">Atualizar status</button>
           </div>
