@@ -52,7 +52,7 @@ function buildPersonalizedMenuMessage(config, state) {
   return joinBlocks([
     `Prazer, ${state.customerName}!`,
     `Voce esta em ${state.customerRegion}, certo?`,
-    `Enquanto ${getAttendantLabel(config)} esta em atendimento, eu vou te ajudar com as opcoes disponiveis por aqui.`,
+    `Enquanto ${getAttendantLabel(config)} nao pode lhe atender no momento, eu vou te ajudar com as opcoes disponiveis por aqui.`,
     "Agora me diga como posso te ajudar:",
     buildMenuMessage(config)
   ]);

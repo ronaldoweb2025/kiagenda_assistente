@@ -20,16 +20,9 @@ const DEFAULT_PUPPETEER_ARGS = [
   "--no-sandbox",
   "--disable-setuid-sandbox",
   "--disable-dev-shm-usage",
-  "--disable-gpu",
-  "--no-zygote",
-  "--disable-extensions",
-  "--disable-background-networking",
   "--no-first-run",
   "--no-default-browser-check",
-  "--disable-default-apps",
-  "--disable-sync",
-  "--disable-translate",
-  "--mute-audio"
+  "--disable-gpu"
 ];
 
 ensureAuthDirectory();
@@ -60,7 +53,13 @@ function ensureSessionEntry(tenantId) {
       initializedAt: null,
       reconnectAttempts: 0,
       lastDisconnectAt: null,
-      reconnectTimer: null
+      reconnectTimer: null,
+      timing: {
+        startAt: null,
+        qrAt: null,
+        authenticatedAt: null,
+        readyAt: null
+      }
     };
   }
 
@@ -72,6 +71,68 @@ function clearReconnectTimer(entry) {
     clearTimeout(entry.reconnectTimer);
     entry.reconnectTimer = null;
   }
+}
+
+function resetTiming(entry) {
+  if (!entry) {
+    return;
+  }
+
+  entry.timing = {
+    startAt: null,
+    qrAt: null,
+    authenticatedAt: null,
+    readyAt: null
+  };
+}
+
+function markTiming(entry, stage) {
+  if (!entry) {
+    return;
+  }
+
+  if (!entry.timing) {
+    resetTiming(entry);
+  }
+
+  entry.timing[stage] = Date.now();
+}
+
+function getElapsedMs(entry, fromStage, toStage) {
+  const from = entry?.timing?.[fromStage];
+  const to = entry?.timing?.[toStage];
+
+  if (!from || !to) {
+    return null;
+  }
+
+  return Math.max(0, to - from);
+}
+
+function logSessionTiming(entry, tenantId, stage) {
+  const total = getElapsedMs(entry, "startAt", stage);
+  const startToQr = getElapsedMs(entry, "startAt", "qrAt");
+  const qrToAuthenticated = getElapsedMs(entry, "qrAt", "authenticatedAt");
+  const authenticatedToReady = getElapsedMs(entry, "authenticatedAt", "readyAt");
+  const parts = [`[tenant:${tenantId}] timing:${stage}`];
+
+  if (total !== null) {
+    parts.push(`start->${stage}=${total}ms`);
+  }
+
+  if (startToQr !== null) {
+    parts.push(`start->qr=${startToQr}ms`);
+  }
+
+  if (qrToAuthenticated !== null) {
+    parts.push(`qr->authenticated=${qrToAuthenticated}ms`);
+  }
+
+  if (authenticatedToReady !== null) {
+    parts.push(`authenticated->ready=${authenticatedToReady}ms`);
+  }
+
+  console.log(parts.join(" | "));
 }
 
 function getClientAuthDirectoryPath(tenantId) {
@@ -111,15 +172,41 @@ function persistSession(tenantId, partialSession = {}) {
     provider: getProvider()
   });
 
-  updateTenant(resolvedTenantId, {
-    whatsapp: {
-      connected: Boolean(nextSession.connected),
-      number: nextSession.connectedWhatsappNumber || nextSession.number || "",
-      sessionId: nextSession.sessionId || ""
-    }
-  });
+  if (shouldSyncTenantWhatsappState(currentSession, nextSession, partialSession)) {
+    updateTenant(resolvedTenantId, {
+      whatsapp: {
+        connected: Boolean(nextSession.connected),
+        number: nextSession.connectedWhatsappNumber || nextSession.number || "",
+        sessionId: nextSession.sessionId || ""
+      }
+    });
+  }
 
   return nextSession;
+}
+
+function shouldSyncTenantWhatsappState(currentSession, nextSession, partialSession = {}) {
+  if (partialSession?.syncTenantState === true) {
+    return true;
+  }
+
+  const status = String(nextSession?.status || "");
+  const currentConnected = Boolean(currentSession?.connected);
+  const nextConnected = Boolean(nextSession?.connected);
+  const currentNumber = String(currentSession?.connectedWhatsappNumber || currentSession?.number || "");
+  const nextNumber = String(nextSession?.connectedWhatsappNumber || nextSession?.number || "");
+  const currentSessionId = String(currentSession?.sessionId || "");
+  const nextSessionId = String(nextSession?.sessionId || "");
+
+  if (currentConnected !== nextConnected) {
+    return true;
+  }
+
+  if (currentNumber !== nextNumber || currentSessionId !== nextSessionId) {
+    return true;
+  }
+
+  return ["connected", "disconnected", "auth_failure", "reconnect_timeout", "initialization_failed"].includes(status);
 }
 
 function isSessionActive(entry) {
@@ -470,9 +557,11 @@ function registerClientEvents(client, entry, sessionId) {
   const tenantId = entry.tenantId;
 
   client.on("qr", async (qr) => {
+    markTiming(entry, "qrAt");
     const qrImage = await createQrImage(qr);
     entry.lastQrImage = qrImage;
     entry.isReady = false;
+    logSessionTiming(entry, tenantId, "qrAt");
 
     persistSession(tenantId, {
       connected: false,
@@ -489,8 +578,10 @@ function registerClientEvents(client, entry, sessionId) {
   });
 
   client.on("authenticated", () => {
+    markTiming(entry, "authenticatedAt");
     entry.isInitializing = false;
     entry.isReady = false;
+    logSessionTiming(entry, tenantId, "authenticatedAt");
 
     persistSession(tenantId, {
       connected: false,
@@ -507,9 +598,11 @@ function registerClientEvents(client, entry, sessionId) {
   });
 
   client.on("ready", () => {
+    markTiming(entry, "readyAt");
     entry.isInitializing = false;
     entry.isReady = true;
     entry.lastQrImage = "";
+    logSessionTiming(entry, tenantId, "readyAt");
     resetReconnectState(entry, tenantId);
 
     persistSession(tenantId, {
@@ -616,6 +709,9 @@ async function startSession(tenantId, options = {}) {
   entry.stopRequested = false;
   entry.lastQrImage = "";
   entry.initializedAt = new Date().toISOString();
+  resetTiming(entry);
+  markTiming(entry, "startAt");
+  console.log(`[tenant:${resolvedTenantId}] timing:startAt=0ms`);
 
   registerClientEvents(client, entry, sessionId);
 
