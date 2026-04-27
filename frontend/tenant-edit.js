@@ -4,6 +4,7 @@ const dashboardState = {
   session: null,
   currentSection: "overview",
   sessionPollTimer: null,
+  sessionAutoStartAttempted: false,
   activeCatalogTab: "products",
   editingProductId: "",
   editingServiceId: "",
@@ -1811,12 +1812,50 @@ async function refreshSession() {
   }
 
   renderAll();
+  await maybeAutoStartSession(dashboardState.session);
   return dashboardState.session;
 }
 
 function shouldKeepPollingSession(session) {
   const status = String(session?.status || "");
   return ["initializing", "qr", "authenticated", "reconnecting", "restore_pending"].includes(status);
+}
+
+function shouldAutoStartSession(session) {
+  const status = String(session?.status || "");
+
+  if (dashboardState.sessionAutoStartAttempted) {
+    return false;
+  }
+
+  if (session?.connected || session?.runtimeActive || session?.runtimeInitializing) {
+    return false;
+  }
+
+  return ["qr", "restore_pending"].includes(status) && Boolean(session?.hasLocalSessionArtifacts);
+}
+
+async function maybeAutoStartSession(session) {
+  if (!shouldAutoStartSession(session)) {
+    return session;
+  }
+
+  dashboardState.sessionAutoStartAttempted = true;
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/session/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      sessionId: dashboardState.tenant?.whatsapp?.sessionId || `${dashboardState.tenantId}-session`
+    })
+  });
+
+  dashboardState.session = response.data;
+  renderAll();
+  await pollSession();
+  return dashboardState.session;
 }
 
 async function pollSession(attempt = 0) {
@@ -2004,6 +2043,7 @@ async function loadDashboard() {
   resetMenuForm();
   renderAll();
   showSection(getSavedSection());
+  await maybeAutoStartSession(dashboardState.session);
 }
 
 async function runAction(action) {

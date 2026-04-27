@@ -425,7 +425,17 @@ async function createQrImage(qr) {
 }
 
 function getSession(tenantId) {
-  return readSession(tenantId);
+  const resolvedTenantId = assertTenantId(tenantId);
+  const session = readSession(resolvedTenantId);
+  const entry = getSessionEntry(resolvedTenantId);
+
+  return {
+    ...session,
+    hasLocalSessionArtifacts: hasSessionArtifacts(resolvedTenantId),
+    runtimeActive: Boolean(entry?.client),
+    runtimeInitializing: Boolean(entry?.isInitializing),
+    runtimeReady: Boolean(entry?.isReady)
+  };
 }
 
 function getReadyClientEntries() {

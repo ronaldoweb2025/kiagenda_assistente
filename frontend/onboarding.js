@@ -66,7 +66,8 @@ const onboardingState = {
   session: null,
   step: 1,
   pendingKiagendaModel: "",
-  sessionPollTimer: null
+  sessionPollTimer: null,
+  sessionAutoStartAttempted: false
 };
 
 const onboardingElements = {
@@ -738,6 +739,7 @@ async function refreshWhatsappStatus() {
   }
 
   renderQrPanel();
+  await maybeAutoStartWhatsappSession(onboardingState.session);
   return onboardingState.session;
 }
 
@@ -745,6 +747,44 @@ function shouldKeepPollingSession(session) {
   const status = String(session?.status || "");
 
   return ["initializing", "qr", "authenticated", "reconnecting", "restore_pending"].includes(status);
+}
+
+function shouldAutoStartSession(session) {
+  const status = String(session?.status || "");
+
+  if (onboardingState.sessionAutoStartAttempted) {
+    return false;
+  }
+
+  if (session?.connected || session?.runtimeActive || session?.runtimeInitializing) {
+    return false;
+  }
+
+  return ["qr", "restore_pending"].includes(status) && Boolean(session?.hasLocalSessionArtifacts);
+}
+
+async function maybeAutoStartWhatsappSession(session) {
+  if (!shouldAutoStartSession(session)) {
+    return session;
+  }
+
+  onboardingState.sessionAutoStartAttempted = true;
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${onboardingState.tenantId}/session/start`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      number: onboardingState.tenant?.whatsapp?.number || "",
+      sessionId: onboardingState.tenant?.whatsapp?.sessionId || `${onboardingState.tenantId}-session`
+    })
+  });
+
+  onboardingState.session = response.data;
+  renderQrPanel();
+  await pollWhatsappStatus();
+  return onboardingState.session;
 }
 
 async function pollWhatsappStatus(attempt = 0) {
@@ -837,6 +877,7 @@ async function loadOnboarding() {
 
   fillForm();
   setStep(1);
+  await maybeAutoStartWhatsappSession(onboardingState.session);
 }
 
 async function runAction(action) {
