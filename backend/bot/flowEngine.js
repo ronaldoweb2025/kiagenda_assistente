@@ -449,6 +449,14 @@ function getCatalogContext(state) {
     };
   }
 
+  if (state.currentState === "aguardando_escolha_parceria") {
+    return {
+      key: "partnerships",
+      title: "Parcerias e revenda",
+      singularLabel: "oferta"
+    };
+  }
+
   return null;
 }
 
@@ -478,6 +486,7 @@ function findSpecificItemCandidate(target, config) {
   const groups = [
     { key: "products", items: config.products || [], labelKey: "name" },
     { key: "services", items: config.services || [], labelKey: "name" },
+    { key: "partnerships", items: config.partnerships || [], labelKey: "name" },
     { key: "links", items: config.links || [], labelKey: "title" }
   ];
 
@@ -612,21 +621,25 @@ function tryResolveCatalogChoice({ state, message, config }) {
 
   if (matches.length === 1) {
     const mediaMessages = buildDetailMediaMessages(matches[0], config);
+    const isProduct = catalogContext.key === "products";
+    const isService = catalogContext.key === "services";
 
     return {
-      intent: catalogContext.key === "products" ? "detalhe_produto" : "detalhe_servico",
+      intent: isProduct ? "detalhe_produto" : isService ? "detalhe_servico" : "detalhe_parceria",
       reply:
-        catalogContext.key === "products"
+        isProduct
           ? buildCatalogItemMessage(matches[0])
-          : buildServiceSalesPrompt(config, matches[0]),
+          : isService
+            ? buildServiceSalesPrompt(config, matches[0])
+            : buildCatalogItemMessage(matches[0]),
       mediaMessages,
       nextState: {
         currentState: "menu",
         fallbackCount: 0,
         handoffUntil: null,
-        lastBotMessageType: catalogContext.key === "products" ? "product_detail" : "service_detail",
+        lastBotMessageType: isProduct ? "product_detail" : isService ? "service_detail" : "partnership_detail",
         conversationState:
-          catalogContext.key === "products"
+          !isService
             ? state.conversationState
             : {
                 stage: "service_followup",
@@ -641,26 +654,38 @@ function tryResolveCatalogChoice({ state, message, config }) {
   }
 
   if (matches.length > 1) {
+    const isProduct = catalogContext.key === "products";
+    const isService = catalogContext.key === "services";
     return {
-      intent: catalogContext.key === "products" ? "opcoes_produto" : "opcoes_servico",
+      intent: isProduct ? "opcoes_produto" : isService ? "opcoes_servico" : "opcoes_parceria",
       reply: buildCatalogMatchesMessage(matches, catalogContext.title, catalogContext.singularLabel),
       nextState: {
         currentState: state.currentState,
         fallbackCount: state.fallbackCount,
         handoffUntil: null,
-        lastBotMessageType: catalogContext.key === "products" ? "product_options" : "service_options"
+        lastBotMessageType: isProduct ? "product_options" : isService ? "service_options" : "partnership_options"
       }
     };
   }
 
   return {
-    intent: catalogContext.key === "products" ? "escolha_produto_nao_encontrada" : "escolha_servico_nao_encontrada",
+    intent:
+      catalogContext.key === "products"
+        ? "escolha_produto_nao_encontrada"
+        : catalogContext.key === "services"
+          ? "escolha_servico_nao_encontrada"
+          : "escolha_parceria_nao_encontrada",
     reply: buildCatalogChoiceHelpMessage(config, catalogContext.key, catalogContext.title, catalogContext.singularLabel),
     nextState: {
       currentState: state.currentState,
       fallbackCount: state.fallbackCount + 1,
       handoffUntil: null,
-      lastBotMessageType: catalogContext.key === "products" ? "product_list" : "service_list"
+      lastBotMessageType:
+        catalogContext.key === "products"
+          ? "product_list"
+          : catalogContext.key === "services"
+            ? "service_list"
+            : "partnership_list"
     }
   };
 }
@@ -671,6 +696,8 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
       return { intent: "ver_produtos", source: "ai" };
     case "servicos":
       return { intent: "ver_servicos", source: "ai" };
+    case "parcerias":
+      return { intent: "ver_parcerias", source: "ai" };
     case "links":
       return { intent: "menu", menuAction: "links", source: "ai" };
     case "atendimento":
@@ -684,6 +711,10 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
 
       if (Array.isArray(config.services) && config.services.length && (!Array.isArray(config.products) || !config.products.length)) {
         return { intent: "ver_servicos", source: "ai" };
+      }
+
+      if (Array.isArray(config.partnerships) && config.partnerships.length && (!Array.isArray(config.products) || !config.products.length) && (!Array.isArray(config.services) || !config.services.length)) {
+        return { intent: "ver_parcerias", source: "ai" };
       }
 
       if (Array.isArray(config.products) && config.products.length) {
@@ -705,6 +736,8 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
       return { intent: "ver_produtos", source: "gemini", aiConfidence: aiDecision.confidence };
     case "servicos":
       return { intent: "ver_servicos", source: "gemini", aiConfidence: aiDecision.confidence };
+    case "parcerias":
+      return { intent: "ver_parcerias", source: "gemini", aiConfidence: aiDecision.confidence };
     case "links":
       return { intent: "menu", menuAction: "links", source: "gemini", aiConfidence: aiDecision.confidence };
     case "atendimento":
@@ -736,6 +769,15 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
       if (matchedItem.type === "services") {
         return {
           intent: "detalhe_servico",
+          itemId: matchedItem.item.id,
+          source: "gemini",
+          aiConfidence: aiDecision.confidence
+        };
+      }
+
+      if (matchedItem.type === "partnerships") {
+        return {
+          intent: "detalhe_parceria",
           itemId: matchedItem.item.id,
           source: "gemini",
           aiConfidence: aiDecision.confidence
@@ -1262,6 +1304,11 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       nextState.currentState = config.services.length ? "aguardando_escolha_servico" : "menu";
       nextState.lastBotMessageType = "service_list";
       break;
+    case "ver_parcerias":
+      reply = buildCatalogListMessage(config, "partnerships", "Parcerias e revenda", "oferta");
+      nextState.currentState = config.partnerships.length ? "aguardando_escolha_parceria" : "menu";
+      nextState.lastBotMessageType = "partnership_list";
+      break;
     case "ver_produtos":
       reply = buildCatalogListMessage(config, "products", "Produtos", "produto");
       nextState.currentState = config.products.length ? "aguardando_escolha_produto" : "menu";
@@ -1290,6 +1337,15 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         lastIntent: "servico",
         rejectedServices: conversationState.rejectedServices
       };
+      break;
+    }
+    case "detalhe_parceria": {
+      const partnership = (config.partnerships || []).find((item) => item.id === matchedIntent.itemId);
+      reply = partnership
+        ? buildCatalogItemMessage(partnership)
+        : buildCatalogListMessage(config, "partnerships", "Parcerias e revenda", "oferta");
+      nextState.currentState = "menu";
+      nextState.lastBotMessageType = "partnership_detail";
       break;
     }
     case "confirmar_servico": {
@@ -1356,6 +1412,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
           ? buildDetailMediaMessages((config.products || []).find((item) => item.id === matchedIntent.itemId), config)
           : matchedIntent.intent === "detalhe_servico"
             ? buildDetailMediaMessages((config.services || []).find((item) => item.id === matchedIntent.itemId), config)
+            : matchedIntent.intent === "detalhe_parceria"
+              ? buildDetailMediaMessages((config.partnerships || []).find((item) => item.id === matchedIntent.itemId), config)
             : [],
     state: savedState
   };

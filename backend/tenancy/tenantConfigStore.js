@@ -226,6 +226,7 @@ function normalizeTenant(input = {}) {
     advancedOptions: normalizeAdvancedOptions(input?.advancedOptions),
     products: normalizeCatalogItems(input?.products, "product"),
     services: normalizeCatalogItems(input?.services, "service"),
+    partnerships: normalizeCatalogItems(input?.partnerships, "partnership"),
     menu: normalizeMenu(input?.menu),
     messages: {
       welcome: normalizeString(input?.messages?.welcome),
@@ -295,6 +296,7 @@ function mergeTenant(baseTenant, partialTenant) {
       : baseTenant.advancedOptions,
     products: Array.isArray(partialTenant.products) ? partialTenant.products : baseTenant.products,
     services: Array.isArray(partialTenant.services) ? partialTenant.services : baseTenant.services,
+    partnerships: Array.isArray(partialTenant.partnerships) ? partialTenant.partnerships : baseTenant.partnerships,
     menu: Array.isArray(partialTenant.menu) ? partialTenant.menu : baseTenant.menu,
     messages: {
       ...baseTenant.messages,

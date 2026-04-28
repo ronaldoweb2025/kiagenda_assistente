@@ -1,4 +1,4 @@
-const ALLOWED_INTENTS = ["produtos", "servicos", "links", "atendimento", "preco", "entrega", "fora_do_escopo"];
+const ALLOWED_INTENTS = ["produtos", "servicos", "parcerias", "links", "atendimento", "preco", "entrega", "fora_do_escopo"];
 const DEFAULT_CONFIDENCE = 0;
 const MIN_CONFIDENCE = 0.7;
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
@@ -77,7 +77,7 @@ async function detectIntentWithAI(message, tenantConfig = {}) {
               "Voce classifica mensagens de WhatsApp para um bot comercial. " +
               "Responda apenas com JSON no schema fornecido. " +
               "Nunca invente dados do negocio. " +
-              "Escolha apenas uma intencao entre: produtos, servicos, links, atendimento, preco, entrega, fora_do_escopo. " +
+              "Escolha apenas uma intencao entre: produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
               "Use fora_do_escopo quando houver ambiguidade, baixa certeza ou assunto fora dessas categorias."
           },
           {

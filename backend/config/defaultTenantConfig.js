@@ -22,6 +22,7 @@ const defaultTenantConfig = {
   },
   products: [],
   services: [],
+  partnerships: [],
   links: [],
   advancedOptions: [],
   menu: [

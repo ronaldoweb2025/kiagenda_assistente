@@ -164,6 +164,10 @@ function findServiceNameMatch(text, services = []) {
   return bestMatch?.service || null;
 }
 
+function findPartnershipMatch(text, partnerships = []) {
+  return findCatalogMatch(text, partnerships);
+}
+
 function resolveMenuIntent(menuItem) {
   switch (menuItem?.type) {
     case "business_info":
@@ -172,6 +176,8 @@ function resolveMenuIntent(menuItem) {
       return { intent: "ver_produtos", menuAction: "products" };
     case "services":
       return { intent: "ver_servicos", menuAction: "services" };
+    case "partnerships":
+      return { intent: "ver_parcerias", menuAction: "partnerships" };
     case "links":
       return { intent: "menu", menuAction: "links" };
     case "specific_link":
@@ -239,6 +245,10 @@ function matchIntent(message, config) {
     return { intent: "ver_produtos" };
   }
 
+  if (includesAny(text, ["parceria", "parcerias", "revenda", "revender", "representante", "distribuidor"])) {
+    return { intent: "ver_parcerias" };
+  }
+
   if (includesAny(text, ["link", "links"])) {
     return { intent: "menu", menuAction: "links" };
   }
@@ -293,6 +303,12 @@ function matchIntent(message, config) {
 
   if (serviceMatch) {
     return { intent: "detalhe_servico", itemId: serviceMatch.id, matchSource: "name" };
+  }
+
+  const partnershipMatch = findPartnershipMatch(text, config.partnerships);
+
+  if (partnershipMatch) {
+    return { intent: "detalhe_parceria", itemId: partnershipMatch.id };
   }
 
   const productMatch = findCatalogMatch(text, config.products);

@@ -2,6 +2,7 @@ const ALLOWED_INTENTS = [
   "saudacao",
   "produtos",
   "servicos",
+  "parcerias",
   "links",
   "atendimento",
   "entrega",
@@ -56,12 +57,21 @@ function buildCatalogContext(tenantConfig = {}) {
   const links = Array.isArray(tenantConfig?.links)
     ? tenantConfig.links.map((item) => item?.title).filter(Boolean)
     : [];
+  const partnerships = Array.isArray(tenantConfig?.partnerships)
+    ? tenantConfig.partnerships
+      .map((item) => ({
+        name: item?.name || "",
+        keywords: [...(item?.keywords || []), ...(item?.aliases || [])].filter(Boolean)
+      }))
+      .filter((item) => item.name)
+    : [];
 
   return {
     businessName: String(tenantConfig?.business?.name || "").trim(),
     businessType: String(tenantConfig?.business?.type || "").trim(),
     products,
     services,
+    partnerships,
     links
   };
 }
@@ -124,7 +134,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
                   "Responda apenas JSON valido. " +
                   "Nao converse com o usuario. " +
                   "Nao crie informacoes. " +
-                  "Use apenas estas intencoes: saudacao, produtos, servicos, links, atendimento, entrega, preco, item_especifico, fora_do_escopo. " +
+                  "Use apenas estas intencoes: saudacao, produtos, servicos, parcerias, links, atendimento, entrega, preco, item_especifico, fora_do_escopo. " +
                   "Se o usuario mencionar algo parecido com um produto ou servico cadastrado, inclusive por palavra-chave, retorne item_especifico e o nome mais provavel. " +
                   "Exemplo: se existir um servico com keywords como site, website ou landing page, frases como quero site ou preciso de um site devem retornar item_especifico. " +
                   "Se nao tiver certeza, retorne fora_do_escopo."
@@ -142,6 +152,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
                     `Tipo de negocio: ${context.businessType || "Nao informado"}\n` +
                     `Produtos cadastrados: ${formatCatalogItems(context.products)}\n` +
                     `Servicos cadastrados: ${formatCatalogItems(context.services)}\n` +
+                    `Parcerias cadastradas: ${formatCatalogItems(context.partnerships)}\n` +
                     `Links cadastrados: ${context.links.join(", ") || "Nenhum"}\n`
                 }
               ]

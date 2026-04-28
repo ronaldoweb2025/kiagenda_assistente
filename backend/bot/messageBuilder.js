@@ -80,6 +80,10 @@ function buildWelcomeMessage(config) {
 function buildMenuMessage(config) {
   const enabledItems = buildDynamicMenuLines(config);
 
+  if (Array.isArray(config.partnerships) && config.partnerships.length) {
+    enabledItems.splice(Math.max(0, enabledItems.length - 1), 0, "- Parcerias e revenda (digite: parcerias)");
+  }
+
   if (!enabledItems.length) {
     return "No momento nao ha opcoes ativas no menu.";
   }

@@ -8,8 +8,10 @@ const dashboardState = {
   activeCatalogTab: "products",
   editingProductId: "",
   editingServiceId: "",
+  editingPartnershipId: "",
   productKeywordSuggestions: [],
   serviceKeywordSuggestions: [],
+  partnershipKeywordSuggestions: [],
   editingLinkId: "",
   editingMenuId: "",
   editingMessageType: "",
@@ -105,6 +107,7 @@ const dashboardElements = {
   messageAudioLockNotice: document.getElementById("messageAudioLockNotice"),
   showProductsTabButton: document.getElementById("showProductsTabButton"),
   showServicesTabButton: document.getElementById("showServicesTabButton"),
+  showPartnershipsTabButton: document.getElementById("showPartnershipsTabButton"),
   currentPlanName: document.getElementById("currentPlanName"),
   currentPlanDescription: document.getElementById("currentPlanDescription"),
   currentSubscriptionStatus: document.getElementById("currentSubscriptionStatus"),
@@ -137,6 +140,17 @@ const dashboardElements = {
   addServiceButton: document.getElementById("addServiceButton"),
   cancelServiceEditButton: document.getElementById("cancelServiceEditButton"),
   servicesList: document.getElementById("servicesList"),
+  partnershipsPanel: document.getElementById("partnershipsPanel"),
+  partnershipName: document.getElementById("partnershipName"),
+  partnershipPrice: document.getElementById("partnershipPrice"),
+  partnershipDescription: document.getElementById("partnershipDescription"),
+  partnershipLink: document.getElementById("partnershipLink"),
+  partnershipKeywords: document.getElementById("partnershipKeywords"),
+  generatePartnershipKeywordsButton: document.getElementById("generatePartnershipKeywordsButton"),
+  partnershipKeywordSuggestions: document.getElementById("partnershipKeywordSuggestions"),
+  addPartnershipButton: document.getElementById("addPartnershipButton"),
+  cancelPartnershipEditButton: document.getElementById("cancelPartnershipEditButton"),
+  partnershipsList: document.getElementById("partnershipsList"),
   linkTitle: document.getElementById("linkTitle"),
   linkUrl: document.getElementById("linkUrl"),
   linkDescription: document.getElementById("linkDescription"),
@@ -619,9 +633,22 @@ async function requestGeminiKeywordSuggestions(name, kind) {
 
 function renderKeywordSuggestions(kind) {
   const isProduct = kind === "products";
-  const container = isProduct ? dashboardElements.productKeywordSuggestions : dashboardElements.serviceKeywordSuggestions;
-  const input = isProduct ? dashboardElements.productKeywords : dashboardElements.serviceKeywords;
-  const suggestions = isProduct ? dashboardState.productKeywordSuggestions : dashboardState.serviceKeywordSuggestions;
+  const isService = kind === "services";
+  const container = isProduct
+    ? dashboardElements.productKeywordSuggestions
+    : isService
+      ? dashboardElements.serviceKeywordSuggestions
+      : dashboardElements.partnershipKeywordSuggestions;
+  const input = isProduct
+    ? dashboardElements.productKeywords
+    : isService
+      ? dashboardElements.serviceKeywords
+      : dashboardElements.partnershipKeywords;
+  const suggestions = isProduct
+    ? dashboardState.productKeywordSuggestions
+    : isService
+      ? dashboardState.serviceKeywordSuggestions
+      : dashboardState.partnershipKeywordSuggestions;
 
   if (!container) {
     return;
@@ -655,10 +682,17 @@ function renderKeywordSuggestions(kind) {
 
 async function generateKeywordSuggestions(kind) {
   const isProduct = kind === "products";
-  const name = String(isProduct ? dashboardElements.productName.value : dashboardElements.serviceName.value).trim();
+  const isService = kind === "services";
+  const name = String(
+    isProduct
+      ? dashboardElements.productName.value
+      : isService
+        ? dashboardElements.serviceName.value
+        : dashboardElements.partnershipName.value
+  ).trim();
 
   if (!name) {
-    throw new Error(`Informe o nome do ${isProduct ? "produto" : "servico"} antes de gerar sugestoes.`);
+    throw new Error(`Informe o nome do ${isProduct ? "produto" : isService ? "servico" : "oferta"} antes de gerar sugestoes.`);
   }
 
   const localSuggestions = buildLocalKeywordSuggestions(name);
@@ -674,8 +708,10 @@ async function generateKeywordSuggestions(kind) {
 
   if (isProduct) {
     dashboardState.productKeywordSuggestions = mergedSuggestions;
-  } else {
+  } else if (isService) {
     dashboardState.serviceKeywordSuggestions = mergedSuggestions;
+  } else {
+    dashboardState.partnershipKeywordSuggestions = mergedSuggestions;
   }
 
   renderKeywordSuggestions(kind);
@@ -720,6 +756,7 @@ function buildModelMessages(modelId) {
   const hasProducts = dashboardState.tenant.products.length > 0;
   const hasServices = dashboardState.tenant.services.length > 0;
   const hasLinks = dashboardState.tenant.links.length > 0;
+  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
 
   const templates = {
     standard: {
@@ -816,6 +853,11 @@ function buildBotOptionPreview(modelId) {
         hint: hasLinks ? "Mostra links de compra e canais importantes." : "Cadastre links para ativar esta opcao."
       },
       {
+        label: "Parcerias e revenda",
+        available: hasPartnerships,
+        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
+      },
+      {
         label: "Falar com atendimento",
         available: true,
         hint: "Encaminha o cliente para atendimento."
@@ -834,6 +876,11 @@ function buildBotOptionPreview(modelId) {
         label: "Links importantes",
         available: hasLinks,
         hint: hasLinks ? "Mostra links de agenda e canais importantes." : "Cadastre links para ativar esta opcao."
+      },
+      {
+        label: "Parcerias e revenda",
+        available: hasPartnerships,
+        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
       },
       {
         label: "Falar com atendimento",
@@ -859,6 +906,11 @@ function buildBotOptionPreview(modelId) {
         label: "Entrega ou retirada",
         available: true,
         hint: "Orienta o cliente sobre como receber ou retirar o pedido."
+      },
+      {
+        label: "Parcerias e revenda",
+        available: hasPartnerships,
+        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
       },
       {
         label: "Falar com atendimento",
@@ -887,6 +939,15 @@ function buildBotOptionPreview(modelId) {
       available: false,
       hint: "Cadastre servicos para ativar esta opcao."
     }]),
+    ...(hasPartnerships ? [{
+      label: "Parcerias e revenda",
+      available: true,
+      hint: "Mostra as ofertas de parceria e revenda."
+    }] : [{
+      label: "Parcerias e revenda",
+      available: false,
+      hint: "Cadastre ofertas para ativar esta opcao."
+    }]),
     ...(hasLinks ? [{
       label: "Links importantes",
       available: true,
@@ -908,6 +969,7 @@ function buildAutomaticMenu(modelId) {
   const items = [];
   const hasProducts = dashboardState.tenant.products.length > 0;
   const hasServices = dashboardState.tenant.services.length > 0;
+  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
   const hasLinks = dashboardState.tenant.links.length > 0;
 
   if ((modelId === "standard" || modelId === "loja_online" || modelId === "delivery") && hasProducts) {
@@ -929,6 +991,17 @@ function buildAutomaticMenu(modelId) {
       enabled: true,
       linkId: "",
       aliases: ["servicos", "atendimento"]
+    });
+  }
+
+  if (hasPartnerships) {
+    items.push({
+      id: "menu_partnerships",
+      label: "Parcerias e revenda",
+      type: "partnerships",
+      enabled: true,
+      linkId: "",
+      aliases: ["parcerias", "parceria", "revenda", "revender", "representante", "distribuidor"]
     });
   }
 
@@ -1123,11 +1196,13 @@ async function saveMessageEdit(messageType) {
 }
 
 function setCatalogTab(tabId) {
-  dashboardState.activeCatalogTab = tabId === "services" ? "services" : "products";
+  dashboardState.activeCatalogTab = ["services", "partnerships"].includes(tabId) ? tabId : "products";
   dashboardElements.showProductsTabButton.classList.toggle("active", dashboardState.activeCatalogTab === "products");
   dashboardElements.showServicesTabButton.classList.toggle("active", dashboardState.activeCatalogTab === "services");
+  dashboardElements.showPartnershipsTabButton.classList.toggle("active", dashboardState.activeCatalogTab === "partnerships");
   dashboardElements.productsPanel.classList.toggle("active", dashboardState.activeCatalogTab === "products");
   dashboardElements.servicesPanel.classList.toggle("active", dashboardState.activeCatalogTab === "services");
+  dashboardElements.partnershipsPanel.classList.toggle("active", dashboardState.activeCatalogTab === "partnerships");
 }
 
 function setMediaStatus(statusElement, asset, emptyLabel = "Opcional") {
@@ -1196,6 +1271,19 @@ function resetServiceForm() {
   dashboardElements.addServiceButton.textContent = "Adicionar servico";
   dashboardElements.cancelServiceEditButton.classList.add("hidden-view");
   renderKeywordSuggestions("services");
+}
+
+function resetPartnershipForm() {
+  dashboardState.editingPartnershipId = "";
+  dashboardState.partnershipKeywordSuggestions = [];
+  dashboardElements.partnershipName.value = "";
+  dashboardElements.partnershipPrice.value = "";
+  dashboardElements.partnershipDescription.value = "";
+  dashboardElements.partnershipLink.value = "";
+  dashboardElements.partnershipKeywords.value = "";
+  dashboardElements.addPartnershipButton.textContent = "Adicionar oferta";
+  dashboardElements.cancelPartnershipEditButton.classList.add("hidden-view");
+  renderKeywordSuggestions("partnerships");
 }
 
 function resetLinkForm() {
@@ -1383,7 +1471,10 @@ function renderMenuList() {
 function renderOverview() {
   const sessionLabel = getWhatsappStatusLabel(dashboardState.session);
   const sessionTone = getWhatsappStatusTone(dashboardState.session);
-  const totalCatalog = dashboardState.tenant.products.length + dashboardState.tenant.services.length;
+  const totalCatalog =
+    dashboardState.tenant.products.length +
+    dashboardState.tenant.services.length +
+    (dashboardState.tenant.partnerships || []).length;
   const botActive = getBotEnabled();
 
   dashboardElements.overviewWhatsappStatus.textContent = sessionLabel;
@@ -1481,6 +1572,7 @@ function renderCatalog() {
   dashboardElements.serviceMediaNotice.classList.toggle("hidden-view", shouldShowMediaFields);
   renderCatalogList(dashboardElements.productsList, dashboardState.tenant.products, "products");
   renderCatalogList(dashboardElements.servicesList, dashboardState.tenant.services, "services");
+  renderCatalogList(dashboardElements.partnershipsList, dashboardState.tenant.partnerships || [], "partnerships");
   setCatalogTab(dashboardState.activeCatalogTab);
 }
 
@@ -1550,19 +1642,34 @@ function startCatalogEdit(kind, itemId) {
     return;
   }
 
-  dashboardState.editingServiceId = itemId;
-  dashboardElements.serviceName.value = item.name || "";
-  dashboardElements.servicePrice.value = item.price || "";
-  dashboardElements.serviceDescription.value = item.description || "";
-  dashboardElements.serviceLink.value = item.link || "";
-  dashboardElements.serviceKeywords.value = (item.keywords || []).join(", ");
-  dashboardState.serviceKeywordSuggestions = [];
-  clearFileInput(dashboardElements.serviceImage);
-  setMediaStatus(dashboardElements.serviceImageStatus, item.image, "Nenhuma imagem cadastrada");
-  dashboardElements.addServiceButton.textContent = "Salvar alteracoes";
-  dashboardElements.cancelServiceEditButton.classList.remove("hidden-view");
-  renderKeywordSuggestions("services");
-  setCatalogTab("services");
+  if (kind === "services") {
+    dashboardState.editingServiceId = itemId;
+    dashboardElements.serviceName.value = item.name || "";
+    dashboardElements.servicePrice.value = item.price || "";
+    dashboardElements.serviceDescription.value = item.description || "";
+    dashboardElements.serviceLink.value = item.link || "";
+    dashboardElements.serviceKeywords.value = (item.keywords || []).join(", ");
+    dashboardState.serviceKeywordSuggestions = [];
+    clearFileInput(dashboardElements.serviceImage);
+    setMediaStatus(dashboardElements.serviceImageStatus, item.image, "Nenhuma imagem cadastrada");
+    dashboardElements.addServiceButton.textContent = "Salvar alteracoes";
+    dashboardElements.cancelServiceEditButton.classList.remove("hidden-view");
+    renderKeywordSuggestions("services");
+    setCatalogTab("services");
+    return;
+  }
+
+  dashboardState.editingPartnershipId = itemId;
+  dashboardElements.partnershipName.value = item.name || "";
+  dashboardElements.partnershipPrice.value = item.price || "";
+  dashboardElements.partnershipDescription.value = item.description || "";
+  dashboardElements.partnershipLink.value = item.link || "";
+  dashboardElements.partnershipKeywords.value = (item.keywords || []).join(", ");
+  dashboardState.partnershipKeywordSuggestions = [];
+  dashboardElements.addPartnershipButton.textContent = "Salvar alteracoes";
+  dashboardElements.cancelPartnershipEditButton.classList.remove("hidden-view");
+  renderKeywordSuggestions("partnerships");
+  setCatalogTab("partnerships");
 }
 
 function removeCatalogItem(kind, itemId) {
@@ -1574,6 +1681,10 @@ function removeCatalogItem(kind, itemId) {
 
   if (kind === "services" && dashboardState.editingServiceId === itemId) {
     resetServiceForm();
+  }
+
+  if (kind === "partnerships" && dashboardState.editingPartnershipId === itemId) {
+    resetPartnershipForm();
   }
 
   renderAll();
@@ -1642,6 +1753,12 @@ async function buildCatalogMedia(kind, existingItem) {
     return { images };
   }
 
+  if (kind === "partnerships") {
+    return {
+      image: null
+    };
+  }
+
   if (!isProfessionalPlan()) {
     return {
       image: existingItem?.image || null
@@ -1656,19 +1773,40 @@ async function buildCatalogMedia(kind, existingItem) {
 
 async function upsertCatalogItem(kind) {
   const isProduct = kind === "products";
-  const nameInput = isProduct ? dashboardElements.productName : dashboardElements.serviceName;
-  const priceInput = isProduct ? dashboardElements.productPrice : dashboardElements.servicePrice;
-  const descriptionInput = isProduct ? dashboardElements.productDescription : dashboardElements.serviceDescription;
-  const linkInput = isProduct ? dashboardElements.productLink : dashboardElements.serviceLink;
-  const keywordsInput = isProduct ? dashboardElements.productKeywords : dashboardElements.serviceKeywords;
-  const editingId = isProduct ? dashboardState.editingProductId : dashboardState.editingServiceId;
+  const isService = kind === "services";
+  const nameInput = isProduct
+    ? dashboardElements.productName
+    : isService
+      ? dashboardElements.serviceName
+      : dashboardElements.partnershipName;
+  const priceInput = isProduct
+    ? dashboardElements.productPrice
+    : isService
+      ? dashboardElements.servicePrice
+      : dashboardElements.partnershipPrice;
+  const descriptionInput = isProduct
+    ? dashboardElements.productDescription
+    : isService
+      ? dashboardElements.serviceDescription
+      : dashboardElements.partnershipDescription;
+  const linkInput = isProduct
+    ? dashboardElements.productLink
+    : isService
+      ? dashboardElements.serviceLink
+      : dashboardElements.partnershipLink;
+  const keywordsInput = isProduct
+    ? dashboardElements.productKeywords
+    : isService
+      ? dashboardElements.serviceKeywords
+      : dashboardElements.partnershipKeywords;
+  const editingId = isProduct ? dashboardState.editingProductId : isService ? dashboardState.editingServiceId : dashboardState.editingPartnershipId;
   const collection = dashboardState.tenant[kind];
   const existingItem = collection.find((item) => item.id === editingId) || null;
   const media = await buildCatalogMedia(kind, existingItem);
   const parsedKeywords = KiagendaApp.parseAliases(keywordsInput.value);
 
   const nextItem = {
-    id: editingId || `${isProduct ? "product" : "service"}_${Date.now()}`,
+    id: editingId || `${isProduct ? "product" : isService ? "service" : "partnership"}_${Date.now()}`,
     name: nameInput.value.trim(),
     price: priceInput.value.trim(),
     description: descriptionInput.value.trim(),
@@ -1681,13 +1819,16 @@ async function upsertCatalogItem(kind) {
     nextItem.images = media.images || [];
     nextItem.image = nextItem.images[0] || null;
     nextItem.audio = null;
-  } else {
+  } else if (isService) {
     nextItem.image = media.image || null;
     nextItem.audio = existingItem?.audio || null;
+  } else {
+    nextItem.image = null;
+    nextItem.audio = null;
   }
 
   if (!nextItem.name) {
-    throw new Error(`Informe o nome do ${isProduct ? "produto" : "servico"}.`);
+    throw new Error(`Informe o nome do ${isProduct ? "produto" : isService ? "servico" : "oferta"}.`);
   }
 
   const existingIndex = collection.findIndex((item) => item.id === nextItem.id);
@@ -1700,8 +1841,10 @@ async function upsertCatalogItem(kind) {
 
   if (isProduct) {
     resetProductForm();
-  } else {
+  } else if (isService) {
     resetServiceForm();
+  } else {
+    resetPartnershipForm();
   }
 
   renderAll();
@@ -1845,6 +1988,7 @@ function buildPayload() {
     },
     products: dashboardState.tenant.products,
     services: dashboardState.tenant.services,
+    partnerships: dashboardState.tenant.partnerships || [],
     links: dashboardState.tenant.links,
     advancedOptions: dashboardState.tenant.advancedOptions || [],
     menu: buildAutomaticMenu(dashboardState.tenant.botModel),
@@ -2091,6 +2235,7 @@ async function loadDashboard() {
   dashboardState.tenant = tenant;
   dashboardState.tenant.botModel = normalizePanelBotModel(tenant.botModel);
   dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
+  dashboardState.tenant.partnerships = Array.isArray(tenant.partnerships) ? tenant.partnerships : [];
   dashboardState.tenant.botEnabled = tenant.botEnabled !== false;
   dashboardState.tenant.aiEnabled = tenant.aiEnabled !== false;
   dashboardState.tenant.plan = tenant.plan || "essential";
@@ -2117,6 +2262,7 @@ async function loadDashboard() {
 
   resetProductForm();
   resetServiceForm();
+  resetPartnershipForm();
   resetLinkForm();
   resetMenuForm();
   renderAll();
@@ -2146,12 +2292,16 @@ dashboardElements.disconnectWhatsappButton.addEventListener("click", () => runAc
 dashboardElements.refreshWhatsappButton.addEventListener("click", () => runAction(refreshSession));
 dashboardElements.showProductsTabButton.addEventListener("click", () => setCatalogTab("products"));
 dashboardElements.showServicesTabButton.addEventListener("click", () => setCatalogTab("services"));
+dashboardElements.showPartnershipsTabButton.addEventListener("click", () => setCatalogTab("partnerships"));
 dashboardElements.addProductButton.addEventListener("click", () => runAction(() => upsertCatalogItem("products")));
 dashboardElements.addServiceButton.addEventListener("click", () => runAction(() => upsertCatalogItem("services")));
+dashboardElements.addPartnershipButton.addEventListener("click", () => runAction(() => upsertCatalogItem("partnerships")));
 dashboardElements.generateProductKeywordsButton.addEventListener("click", () => runAction(() => generateKeywordSuggestions("products")));
 dashboardElements.generateServiceKeywordsButton.addEventListener("click", () => runAction(() => generateKeywordSuggestions("services")));
+dashboardElements.generatePartnershipKeywordsButton.addEventListener("click", () => runAction(() => generateKeywordSuggestions("partnerships")));
 dashboardElements.cancelProductEditButton.addEventListener("click", resetProductForm);
 dashboardElements.cancelServiceEditButton.addEventListener("click", resetServiceForm);
+dashboardElements.cancelPartnershipEditButton.addEventListener("click", resetPartnershipForm);
 dashboardElements.addLinkButton.addEventListener("click", () => runAction(upsertLink));
 dashboardElements.cancelLinkEditButton.addEventListener("click", resetLinkForm);
 dashboardElements.toggleAdvancedMenuButton.addEventListener("click", () => toggleAdvancedMenu());

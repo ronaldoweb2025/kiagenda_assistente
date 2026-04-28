@@ -363,6 +363,7 @@
           <div class="tab-switch" role="tablist" aria-label="Produtos e servicos">
             <button id="showProductsTabButton" class="tab-switch-button active" type="button">Produtos</button>
             <button id="showServicesTabButton" class="tab-switch-button" type="button">Servicos</button>
+            <button id="showPartnershipsTabButton" class="tab-switch-button" type="button">Parcerias e revenda</button>
           </div>
 
           <div id="productsPanel" class="catalog-panel active">
@@ -430,6 +431,31 @@
                 <button id="cancelServiceEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
               </div>
               <ul id="servicesList" class="item-list"></ul>
+            </div>
+          </div>
+
+          <div id="partnershipsPanel" class="catalog-panel">
+            <div class="section-subcard">
+              <h4>Parcerias e revenda</h4>
+              <div class="field-grid">
+                <label>Nome<input id="partnershipName" type="text" placeholder="Ex.: Revenda para cafeterias"></label>
+                <label>Oferta<input id="partnershipPrice" type="text" placeholder="Ex.: Condicoes especiais para parceiros"></label>
+                <label class="full-width">Descricao<textarea id="partnershipDescription" placeholder="Explique como funciona a parceria, cidades atendidas, perfil ideal e proximos passos."></textarea></label>
+                <label class="full-width">Link<input id="partnershipLink" type="text" placeholder="https://"></label>
+                <label class="full-width">Palavras-chave<input id="partnershipKeywords" type="text" placeholder="revenda, parceria, representante, distribuidor"></label>
+                <div class="full-width">
+                  <div class="button-row">
+                    <button id="generatePartnershipKeywordsButton" class="secondary-button" type="button">Gerar sugestoes</button>
+                  </div>
+                  <p class="field-help">Clique nas sugestoes para adicionar sem substituir as palavras-chave atuais.</p>
+                  <div id="partnershipKeywordSuggestions" class="suggestion-row hidden-view"></div>
+                </div>
+              </div>
+              <div class="button-row">
+                <button id="addPartnershipButton" class="primary-button" type="button">Adicionar oferta</button>
+                <button id="cancelPartnershipEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+              </div>
+              <ul id="partnershipsList" class="item-list"></ul>
             </div>
           </div>
         </article>
@@ -626,7 +652,7 @@
 
           <input id="tenantId" type="hidden">
 
-          <div class="section-subcard advanced-menu-shell">
+          <div class="section-subcard advanced-menu-shell hidden-view">
             <div class="section-subcard-header">
               <div>
                 <h4>Opcoes extras de triagem</h4>
