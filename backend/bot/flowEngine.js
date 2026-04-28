@@ -1330,6 +1330,11 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         rejectedServices: conversationState.rejectedServices
       };
       break;
+    case "menu_customizado":
+      reply = String(matchedIntent.customReply || "").trim() || buildFallbackMessage(config);
+      nextState.currentState = "menu";
+      nextState.lastBotMessageType = "custom_menu";
+      break;
     case "fora_do_escopo":
     default:
       reply = buildFallbackMessage(config);

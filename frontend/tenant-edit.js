@@ -974,24 +974,24 @@ function buildAutomaticMenu(modelId) {
 function getMenuTypeLabel(type) {
   switch (type) {
     case "products":
-      return "Mostrar produtos automaticamente";
+      return "Mostrar produtos";
     case "services":
-      return "Mostrar servicos automaticamente";
+      return "Mostrar servicos";
     case "links":
-      return "Mostrar links automaticamente";
+      return "Mostrar links";
     case "handoff":
       return "Falar com atendimento";
-    case "custom":
-      return "Escrever resposta personalizada";
+    case "customReply":
+      return "Resposta personalizada";
     default:
-      return "Acao personalizada";
+      return "Resposta personalizada";
   }
 }
 
 function getMenuActionDescription(item) {
-  const firstTrigger = (item.aliases && item.aliases[0]) || item.label || "essa opcao";
+  const firstTrigger = (item.keywords && item.keywords[0]) || item.label || "essa opcao";
 
-  switch (item.type) {
+  switch (item.actionType) {
     case "products":
       return `Quando o cliente digitar ${firstTrigger}, o atendimento automatico mostra os produtos cadastrados.`;
     case "services":
@@ -1000,21 +1000,17 @@ function getMenuActionDescription(item) {
       return `Quando o cliente digitar ${firstTrigger}, o atendimento automatico mostra os links importantes.`;
     case "handoff":
       return `Quando o cliente digitar ${firstTrigger}, o atendimento automatico chama o atendimento.`;
-    case "custom":
+    case "customReply":
       return `Quando o cliente digitar ${firstTrigger}, o atendimento automatico envia a resposta personalizada abaixo.`;
     default:
       return `Quando o cliente digitar ${firstTrigger}, o atendimento automatico executa essa opcao personalizada.`;
   }
 }
 
-function getEffectiveMenu() {
-  return dashboardState.menuEditedManually ? dashboardState.tenant.menu : buildAutomaticMenu(dashboardState.tenant.botModel);
-}
-
 function resetMenuForm() {
   dashboardState.editingMenuId = "";
   dashboardElements.menuLabel.value = "";
-  dashboardElements.menuType.value = "products";
+  dashboardElements.menuType.value = "customReply";
   dashboardElements.menuAliases.value = "";
   dashboardElements.menuCustomReply.value = "";
   dashboardElements.menuCustomReplyField.classList.add("hidden-view");
@@ -1026,8 +1022,8 @@ function toggleAdvancedMenu(forceOpen) {
   dashboardState.advancedMenuOpen = typeof forceOpen === "boolean" ? forceOpen : !dashboardState.advancedMenuOpen;
   dashboardElements.advancedMenuPanel.classList.toggle("hidden-view", !dashboardState.advancedMenuOpen);
   dashboardElements.toggleAdvancedMenuButton.textContent = dashboardState.advancedMenuOpen
-    ? "Esconder personalizacao"
-    : "Mostrar personalizacao";
+    ? "Esconder opcoes extras"
+    : "Mostrar opcoes extras";
 }
 
 function getEffectiveMessages() {
@@ -1326,7 +1322,7 @@ function renderLinksList() {
 
 function renderMenuList() {
   dashboardElements.menuOptionsList.innerHTML = "";
-  const menuItems = dashboardState.tenant.menu || [];
+  const menuItems = dashboardState.tenant.advancedOptions || [];
 
   if (!menuItems.length) {
     dashboardElements.menuOptionsList.innerHTML = '<p class="empty-copy">Nenhuma opcao cadastrada ainda.</p>';
@@ -1340,9 +1336,9 @@ function renderMenuList() {
       <div>
         <strong>${KiagendaApp.escapeHtml(item.label)}</strong>
         <span>${KiagendaApp.escapeHtml(getMenuActionDescription(item))}</span>
-        <span><strong>Palavras que ativam:</strong> ${KiagendaApp.escapeHtml((item.aliases || []).join(", ") || item.label || "-")}</span>
-        <span><strong>O que o atendimento automatico vai fazer:</strong> ${KiagendaApp.escapeHtml(getMenuTypeLabel(item.type))}</span>
-        ${item.type === "custom" && item.customReply ? `<span><strong>Resposta personalizada:</strong> ${KiagendaApp.escapeHtml(item.customReply)}</span>` : ""}
+        <span><strong>Palavras que ativam:</strong> ${KiagendaApp.escapeHtml((item.keywords || []).join(", ") || item.label || "-")}</span>
+        <span><strong>Tipo de resposta:</strong> ${KiagendaApp.escapeHtml(getMenuTypeLabel(item.actionType))}</span>
+        ${item.actionType === "customReply" && item.customReply ? `<span><strong>Resposta personalizada:</strong> ${KiagendaApp.escapeHtml(item.customReply)}</span>` : ""}
       </div>
     `;
 
@@ -1356,10 +1352,10 @@ function renderMenuList() {
     editButton.addEventListener("click", () => {
       dashboardState.editingMenuId = item.id;
       dashboardElements.menuLabel.value = item.label || "";
-      dashboardElements.menuType.value = item.type || "products";
-      dashboardElements.menuAliases.value = (item.aliases || []).join(", ");
+      dashboardElements.menuType.value = item.actionType || "customReply";
+      dashboardElements.menuAliases.value = (item.keywords || []).join(", ");
       dashboardElements.menuCustomReply.value = item.customReply || "";
-      dashboardElements.menuCustomReplyField.classList.toggle("hidden-view", item.type !== "custom");
+      dashboardElements.menuCustomReplyField.classList.toggle("hidden-view", item.actionType !== "customReply");
       dashboardElements.addMenuButton.textContent = "Salvar alteracoes";
       dashboardElements.cancelMenuEditButton.classList.remove("hidden-view");
       toggleAdvancedMenu(true);
@@ -1370,8 +1366,10 @@ function renderMenuList() {
     removeButton.className = "danger-button";
     removeButton.textContent = "Remover";
     removeButton.addEventListener("click", () => {
-      dashboardState.tenant.menu = dashboardState.tenant.menu.filter((menuItem) => menuItem.id !== item.id);
-      dashboardState.menuEditedManually = true;
+      dashboardState.tenant.advancedOptions = (dashboardState.tenant.advancedOptions || []).filter((menuItem) => menuItem.id !== item.id);
+      if (dashboardState.editingMenuId === item.id) {
+        resetMenuForm();
+      }
       renderAll();
     });
 
@@ -1492,10 +1490,6 @@ function renderLinks() {
 }
 
 function renderSettings() {
-  if (!dashboardState.menuEditedManually) {
-    dashboardState.tenant.menu = buildAutomaticMenu(dashboardState.tenant.botModel);
-  }
-
   dashboardElements.tenantId.value = dashboardState.tenant.tenantId;
   dashboardElements.tenantActive.value = String(getBotEnabled());
   dashboardElements.businessName.value = dashboardState.tenant.business.name || "";
@@ -1760,39 +1754,51 @@ function upsertLink() {
 }
 
 function addAdvancedMenuItem() {
+  const label = dashboardElements.menuLabel.value.trim();
+  const actionType = dashboardElements.menuType.value;
+  const keywords = KiagendaApp.parseAliases(dashboardElements.menuAliases.value);
+  const customReply = actionType === "customReply" ? dashboardElements.menuCustomReply.value.trim() : "";
+
+  if (!label) {
+    throw new Error("Informe o nome da opcao.");
+  }
+
+  if (!keywords.length) {
+    throw new Error("Informe pelo menos uma palavra que ativa essa opcao.");
+  }
+
+  if (!actionType) {
+    throw new Error("Escolha o tipo de resposta.");
+  }
+
+  if (actionType === "customReply" && !customReply) {
+    throw new Error("Escreva a resposta personalizada dessa opcao.");
+  }
+
   const nextItem = {
-    id: dashboardState.editingMenuId || `menu_${Date.now()}`,
-    label: dashboardElements.menuLabel.value.trim(),
-    type: dashboardElements.menuType.value,
+    id: dashboardState.editingMenuId || `advanced_option_${Date.now()}`,
+    label,
+    actionType,
     enabled: true,
-    linkId: "",
-    aliases: KiagendaApp.parseAliases(dashboardElements.menuAliases.value),
-    customReply: dashboardElements.menuType.value === "custom" ? dashboardElements.menuCustomReply.value.trim() : ""
+    keywords,
+    customReply
   };
 
-  if (!nextItem.label) {
-    throw new Error("Informe o nome da resposta.");
-  }
-
-  if (!nextItem.aliases.length) {
-    nextItem.aliases = buildCatalogAliases(nextItem.label);
-  }
-
-  if (nextItem.type === "custom" && !nextItem.customReply) {
-    throw new Error("Escreva a resposta personalizada dessa resposta.");
-  }
-
-  const existingIndex = dashboardState.tenant.menu.findIndex((item) => item.id === nextItem.id);
+  dashboardState.tenant.advancedOptions = Array.isArray(dashboardState.tenant.advancedOptions)
+    ? dashboardState.tenant.advancedOptions
+    : [];
+  const existingIndex = dashboardState.tenant.advancedOptions.findIndex((item) => item.id === nextItem.id);
 
   if (existingIndex >= 0) {
-    dashboardState.tenant.menu[existingIndex] = nextItem;
+    dashboardState.tenant.advancedOptions[existingIndex] = nextItem;
   } else {
-    dashboardState.tenant.menu.push(nextItem);
+    dashboardState.tenant.advancedOptions.push(nextItem);
   }
 
-  dashboardState.menuEditedManually = true;
   resetMenuForm();
   renderAll();
+  toggleAdvancedMenu(true);
+  setFeedback("Opcao extra adicionada na tela. Clique em Salvar alteracoes para publicar no bot.");
 }
 
 function syncFormToState() {
@@ -1836,7 +1842,8 @@ function buildPayload() {
     products: dashboardState.tenant.products,
     services: dashboardState.tenant.services,
     links: dashboardState.tenant.links,
-    menu: getEffectiveMenu(),
+    advancedOptions: dashboardState.tenant.advancedOptions || [],
+    menu: buildAutomaticMenu(dashboardState.tenant.botModel),
     messages: getEffectiveMessages(),
     settings: { ...dashboardState.tenant.settings },
     integration: dashboardState.tenant.integration
@@ -1929,7 +1936,6 @@ async function saveTenant() {
 
   dashboardState.tenant = response.data;
   dashboardState.tenant.botModel = normalizePanelBotModel(response.data.botModel);
-  dashboardState.menuEditedManually = false;
   renderAll();
   setFeedback(response.message || "Alteracoes salvas com sucesso.");
 }
@@ -2080,6 +2086,7 @@ async function loadDashboard() {
 
   dashboardState.tenant = tenant;
   dashboardState.tenant.botModel = normalizePanelBotModel(tenant.botModel);
+  dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
   dashboardState.tenant.botEnabled = tenant.botEnabled !== false;
   dashboardState.tenant.aiEnabled = tenant.aiEnabled !== false;
   dashboardState.tenant.plan = tenant.plan || "essential";
@@ -2147,7 +2154,7 @@ dashboardElements.toggleAdvancedMenuButton.addEventListener("click", () => toggl
 dashboardElements.cancelMenuEditButton.addEventListener("click", resetMenuForm);
 dashboardElements.addMenuButton.addEventListener("click", () => runAction(addAdvancedMenuItem));
 dashboardElements.menuType.addEventListener("change", () => {
-  dashboardElements.menuCustomReplyField.classList.toggle("hidden-view", dashboardElements.menuType.value !== "custom");
+  dashboardElements.menuCustomReplyField.classList.toggle("hidden-view", dashboardElements.menuType.value !== "customReply");
 });
 dashboardElements.productImages?.addEventListener("change", () => {
   const files = Array.from(dashboardElements.productImages.files || []).filter(Boolean);
@@ -2179,7 +2186,6 @@ dashboardElements.cancelHandoffMessageButton.addEventListener("click", resetMess
 dashboardElements.simulateMessageButton.addEventListener("click", () => runAction(simulateMessage));
 dashboardElements.botModelSelect.addEventListener("change", () => {
   dashboardState.tenant.botModel = dashboardElements.botModelSelect.value;
-  dashboardState.menuEditedManually = false;
   resetMessageEditors();
   renderAll();
 });

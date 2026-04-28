@@ -23,6 +23,7 @@ const defaultTenantConfig = {
   products: [],
   services: [],
   links: [],
+  advancedOptions: [],
   menu: [
     {
       id: "menu_sobre",

@@ -144,6 +144,23 @@ function normalizeLinks(links) {
     .filter((link) => link.title || link.url);
 }
 
+function normalizeAdvancedOptions(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => ({
+      id: normalizeString(item?.id) || `advanced_option_${index + 1}`,
+      label: normalizeString(item?.label) || `Opcao extra ${index + 1}`,
+      actionType: normalizeString(item?.actionType || item?.type || "customReply") || "customReply",
+      keywords: normalizeStringList(item?.keywords || item?.aliases),
+      customReply: normalizeString(item?.customReply),
+      enabled: item?.enabled !== undefined ? normalizeBoolean(item.enabled) : true
+    }))
+    .filter((item) => item.label && item.keywords.length);
+}
+
 function normalizeMenu(menuItems) {
   const sourceItems = Array.isArray(menuItems) && menuItems.length ? menuItems : defaultTenantConfig.menu;
 
@@ -153,10 +170,11 @@ function normalizeMenu(menuItems) {
     return {
       id: normalizeString(item?.id) || `menu_${index + 1}`,
       label: normalizeString(item?.label) || `Opcao ${index + 1}`,
-      type: !explicitType || explicitType === "custom" ? inferMenuType(item) : explicitType,
+      type: explicitType || inferMenuType(item),
       enabled: normalizeBoolean(item?.enabled),
       linkId: normalizeString(item?.linkId),
-      aliases: normalizeStringList(item?.aliases)
+      aliases: normalizeStringList(item?.aliases),
+      customReply: normalizeString(item?.customReply)
     };
   });
 }
@@ -205,6 +223,7 @@ function normalizeTenant(input = {}) {
       description: normalizeString(input?.business?.description)
     },
     links: normalizeLinks(input?.links),
+    advancedOptions: normalizeAdvancedOptions(input?.advancedOptions),
     products: normalizeCatalogItems(input?.products, "product"),
     services: normalizeCatalogItems(input?.services, "service"),
     menu: normalizeMenu(input?.menu),
@@ -271,6 +290,9 @@ function mergeTenant(baseTenant, partialTenant) {
       ...(partialTenant.business || {})
     },
     links: Array.isArray(partialTenant.links) ? partialTenant.links : baseTenant.links,
+    advancedOptions: Array.isArray(partialTenant.advancedOptions)
+      ? partialTenant.advancedOptions
+      : baseTenant.advancedOptions,
     products: Array.isArray(partialTenant.products) ? partialTenant.products : baseTenant.products,
     services: Array.isArray(partialTenant.services) ? partialTenant.services : baseTenant.services,
     menu: Array.isArray(partialTenant.menu) ? partialTenant.menu : baseTenant.menu,

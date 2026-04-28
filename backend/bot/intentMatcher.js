@@ -89,6 +89,19 @@ function includesAny(text, terms) {
   return terms.some((term) => term && text.includes(normalizeText(term)));
 }
 
+function findAdvancedOptionMatch(text, config) {
+  const options = Array.isArray(config?.advancedOptions) ? config.advancedOptions : [];
+
+  return options.find((item) => {
+    if (!item?.enabled) {
+      return false;
+    }
+
+    const candidates = [item.label, ...(item.keywords || [])];
+    return includesAny(text, candidates);
+  }) || null;
+}
+
 function findMenuMatch(text, config) {
   return config.menu.find((item) => {
     if (!item.enabled) {
@@ -167,8 +180,39 @@ function resolveMenuIntent(menuItem) {
       return { intent: "entrega_retirada", menuAction: "delivery_pickup" };
     case "handoff":
       return { intent: "atendimento_humano", menuAction: "handoff" };
+    case "custom":
+      return {
+        intent: "menu_customizado",
+        menuAction: "custom",
+        customReply: String(menuItem?.customReply || ""),
+        menuItemId: String(menuItem?.id || "")
+      };
     default:
       return { intent: "menu", menuAction: "menu" };
+  }
+}
+
+function resolveAdvancedOptionIntent(option) {
+  const actionType = String(option?.actionType || "").trim();
+
+  switch (actionType) {
+    case "products":
+      return { intent: "ver_produtos", source: "advanced_option", optionId: option.id };
+    case "services":
+      return { intent: "ver_servicos", source: "advanced_option", optionId: option.id };
+    case "links":
+      return { intent: "menu", menuAction: "links", source: "advanced_option", optionId: option.id };
+    case "handoff":
+      return { intent: "atendimento_humano", menuAction: "handoff", source: "advanced_option", optionId: option.id };
+    case "customReply":
+    default:
+      return {
+        intent: "menu_customizado",
+        menuAction: "custom",
+        customReply: String(option?.customReply || ""),
+        optionId: String(option?.id || ""),
+        source: "advanced_option"
+      };
   }
 }
 
@@ -217,6 +261,12 @@ function matchIntent(message, config) {
 
   if (menuMatch) {
     return resolveMenuIntent(menuMatch);
+  }
+
+  const advancedOptionMatch = findAdvancedOptionMatch(text, config);
+
+  if (advancedOptionMatch) {
+    return resolveAdvancedOptionIntent(advancedOptionMatch);
   }
 
   const bestServiceMatch = matchBestService(text, config.services);

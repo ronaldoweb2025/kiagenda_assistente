@@ -629,37 +629,37 @@
           <div class="section-subcard advanced-menu-shell">
             <div class="section-subcard-header">
               <div>
-                <h4>Configuracoes avancadas das respostas</h4>
-                <p class="muted-copy">Use esta area apenas se voce realmente quiser montar opcoes manualmente.</p>
+                <h4>Opcoes extras de triagem</h4>
+                <p class="muted-copy">Crie respostas extras para assuntos como revenda, parceria, representante ou qualquer outro fluxo do seu negocio.</p>
               </div>
-              <button id="toggleAdvancedMenuButton" class="neutral-button" type="button">Mostrar personalizacao</button>
+              <button id="toggleAdvancedMenuButton" class="neutral-button" type="button">Mostrar opcoes extras</button>
             </div>
 
             <div id="advancedMenuPanel" class="advanced-menu-panel hidden-view">
               <div class="status-highlight compact-highlight">
-                <span>Aviso</span>
-                <strong>Use apenas se quiser personalizar</strong>
-                <p class="muted-copy">O sistema cria automaticamente as opcoes principais com base nos produtos, servicos e links cadastrados.</p>
+                <span>Dica</span>
+                <strong>As opcoes padrao continuam funcionando</strong>
+                <p class="muted-copy">Use esta area apenas para adicionar novas categorias de triagem sem mexer em Servicos, Links e Atendimento.</p>
               </div>
 
               <div class="field-grid">
                 <label>
                   Nome da opcao
-                  <input id="menuLabel" type="text" placeholder="Ex.: Ver servicos">
+                  <input id="menuLabel" type="text" placeholder="Ex.: Revenda e Parcerias">
                 </label>
                 <label>
-                  O que o atendimento automatico vai fazer
+                  Tipo de resposta
                   <select id="menuType">
-                    <option value="products">Mostrar produtos automaticamente</option>
-                    <option value="services">Mostrar servicos automaticamente</option>
-                    <option value="links">Mostrar links automaticamente</option>
+                    <option value="customReply">Resposta personalizada</option>
+                    <option value="products">Mostrar produtos</option>
+                    <option value="services">Mostrar servicos</option>
+                    <option value="links">Mostrar links</option>
                     <option value="handoff">Falar com atendimento</option>
-                    <option value="custom">Escrever resposta personalizada</option>
                   </select>
                 </label>
                 <label class="full-width">
                   Palavras que ativam
-                  <input id="menuAliases" type="text" placeholder="Ex.: produtos, servicos, atendimento">
+                  <input id="menuAliases" type="text" placeholder="Ex.: revenda, parceria, revender, representante, distribuidor">
                 </label>
                 <label class="full-width hidden-view" id="menuCustomReplyField">
                   Resposta personalizada
