@@ -557,9 +557,13 @@ async function runAction(action) {
 async function initializeGoogleLogin() {
   try {
     const response = await KiagendaApp.requestJson("/auth/google/status");
-    authElements.googleLoginButton.classList.toggle("hidden-view", !response.enabled);
+    authElements.googleLoginButton.disabled = !response.enabled;
+    authElements.googleLoginButton.title = response.enabled
+      ? ""
+      : "Login com Google indisponivel no momento.";
   } catch (error) {
-    authElements.googleLoginButton.classList.add("hidden-view");
+    authElements.googleLoginButton.disabled = false;
+    authElements.googleLoginButton.title = "";
   }
 }
 
