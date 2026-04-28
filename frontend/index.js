@@ -9,6 +9,7 @@ const authElements = {
   loginWhatsapp: document.getElementById("loginWhatsapp"),
   loginPassword: document.getElementById("loginPassword"),
   googleLoginButton: document.getElementById("googleLoginButton"),
+  googleRegisterButton: document.getElementById("googleRegisterButton"),
   openRegisterButton: document.getElementById("openRegisterButton"),
   firstAccessButton: document.getElementById("firstAccessButton"),
   forgotPasswordButton: document.getElementById("forgotPasswordButton"),
@@ -557,14 +558,33 @@ async function runAction(action) {
 async function initializeGoogleLogin() {
   try {
     const response = await KiagendaApp.requestJson("/auth/google/status");
-    authElements.googleLoginButton.disabled = !response.enabled;
-    authElements.googleLoginButton.title = response.enabled
-      ? ""
-      : "Login com Google indisponivel no momento.";
+    [authElements.googleLoginButton, authElements.googleRegisterButton].forEach((button) => {
+      if (!button) {
+        return;
+      }
+
+      button.disabled = !response.enabled;
+      button.title = response.enabled
+        ? ""
+        : "Login com Google indisponivel no momento.";
+    });
   } catch (error) {
-    authElements.googleLoginButton.disabled = false;
-    authElements.googleLoginButton.title = "";
+    [authElements.googleLoginButton, authElements.googleRegisterButton].forEach((button) => {
+      if (!button) {
+        return;
+      }
+
+      button.disabled = false;
+      button.title = "";
+    });
   }
+}
+
+function startGoogleAuth(mode) {
+  const params = new URLSearchParams({
+    mode
+  });
+  window.location.href = `/auth/google?${params.toString()}`;
 }
 
 authElements.openRegisterButton.addEventListener("click", () => showAuthView("register"));
@@ -584,7 +604,10 @@ authElements.backToLoginFromForgotButton.addEventListener("click", () => {
   showAuthView("login");
 });
 authElements.googleLoginButton.addEventListener("click", () => {
-  window.location.href = "/auth/google";
+  startGoogleAuth("login");
+});
+authElements.googleRegisterButton?.addEventListener("click", () => {
+  startGoogleAuth("signup");
 });
 authElements.forgotPasswordButton.addEventListener("click", () => {
   authState.forgotPasswordEmail = "";

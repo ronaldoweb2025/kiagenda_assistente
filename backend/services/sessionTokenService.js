@@ -12,7 +12,10 @@ function normalizeAccountSession(account = {}) {
     businessName: account.businessName || "",
     activationStatus: account.activationStatus === "active" ? "active" : "pending",
     authProvider: account.authProvider || "local",
-    avatarUrl: account.avatarUrl || ""
+    avatarUrl: account.avatarUrl || "",
+    googleId: account.googleId || account.google_id || "",
+    google_id: account.googleId || account.google_id || "",
+    googleLinked: Boolean(account.googleId || account.google_id)
   };
 }
 

@@ -166,6 +166,11 @@ const dashboardElements = {
   businessDescription: document.getElementById("businessDescription"),
   settingsPlanDescription: document.getElementById("settingsPlanDescription"),
   settingsUpgradeButton: document.getElementById("settingsUpgradeButton"),
+  googleAccountAvatar: document.getElementById("googleAccountAvatar"),
+  googleAccountStatus: document.getElementById("googleAccountStatus"),
+  googleAccountHint: document.getElementById("googleAccountHint"),
+  googleAccountEmail: document.getElementById("googleAccountEmail"),
+  connectGoogleButton: document.getElementById("connectGoogleButton"),
   newPassword: document.getElementById("newPassword"),
   confirmNewPassword: document.getElementById("confirmNewPassword"),
   updatePasswordButton: document.getElementById("updatePasswordButton"),
@@ -340,6 +345,47 @@ function getBotStatusTone() {
 
 function getAccountWhatsappNumber() {
   return getAuthSessionForTenant()?.whatsapp || "";
+}
+
+function getGoogleLinkedSession() {
+  const session = getAuthSessionForTenant();
+  return session || null;
+}
+
+function isGoogleLinked() {
+  const session = getGoogleLinkedSession();
+  return Boolean(session?.googleLinked || session?.googleId || session?.google_id);
+}
+
+function getGoogleDisplayEmail() {
+  return String(getGoogleLinkedSession()?.email || dashboardState.tenant?.email || "").trim();
+}
+
+function renderGoogleConnectionStatus() {
+  const session = getGoogleLinkedSession();
+  const linked = isGoogleLinked();
+  const displayName = String(session?.name || dashboardState.tenant?.business?.attendantName || "Google").trim();
+  const avatarUrl = String(session?.avatarUrl || "").trim();
+
+  dashboardElements.googleAccountStatus.textContent = linked
+    ? "Google conectado"
+    : "Google nao conectado";
+  dashboardElements.googleAccountHint.textContent = linked
+    ? "Sua conta ja pode usar o botao Entrar com Google na tela de login."
+    : "Conecte a mesma conta de email do seu cadastro para liberar o login com Google.";
+  dashboardElements.googleAccountEmail.textContent = getGoogleDisplayEmail()
+    ? `Email da conta: ${getGoogleDisplayEmail()}`
+    : "Defina um email valido no seu cadastro antes de conectar o Google.";
+  dashboardElements.connectGoogleButton.querySelector("span:last-child").textContent = linked
+    ? "Reconectar conta Google"
+    : "Conectar conta Google";
+
+  if (avatarUrl) {
+    dashboardElements.googleAccountAvatar.innerHTML = `<img src="${KiagendaApp.escapeHtml(avatarUrl)}" alt="">`;
+    return;
+  }
+
+  dashboardElements.googleAccountAvatar.textContent = displayName.slice(0, 1).toUpperCase() || "G";
 }
 
 function getConnectedWhatsappNumber() {
@@ -1461,6 +1507,7 @@ function renderSettings() {
   dashboardElements.handoffTimeout.value = dashboardState.tenant.settings.handoffTimeout || 30;
   dashboardElements.settingsPlanDescription.textContent = `Seu plano atual: ${getPlanLabel()}`;
   dashboardElements.settingsUpgradeButton.classList.toggle("hidden-view", isProfessionalPlan());
+  renderGoogleConnectionStatus();
   toggleAdvancedMenu(dashboardState.advancedMenuOpen);
   renderMenuList();
 }
@@ -1916,6 +1963,25 @@ async function updatePassword() {
   setFeedback("Senha atualizada com sucesso.");
 }
 
+function connectGoogleAccount() {
+  if (!dashboardState.tenantId) {
+    throw new Error("Nao encontramos a conta atual para conectar ao Google.");
+  }
+
+  window.location.href = `/auth/google?mode=connect&tenantId=${encodeURIComponent(dashboardState.tenantId)}`;
+}
+
+function consumeAuthSuccessMessage() {
+  const authSuccess = KiagendaApp.getQueryParam("auth_success");
+
+  if (authSuccess === "google_connected") {
+    setFeedback("Conta Google conectada com sucesso.");
+    const url = new URL(window.location.href);
+    url.searchParams.delete("auth_success");
+    window.history.replaceState({}, document.title, url.toString());
+  }
+}
+
 function logout() {
   KiagendaApp.clearAuthSession();
   window.location.replace("index.html");
@@ -1993,6 +2059,7 @@ async function loadDashboard() {
   if (!ensureAuthenticatedAccess(dashboardState.tenantId)) {
     return;
   }
+  consumeAuthSuccessMessage();
   stopSessionPolling();
 
   let tenant;
@@ -2094,6 +2161,7 @@ dashboardElements.messageAudio?.addEventListener("change", () => {
     "Opcional. Esse audio sera enviado junto com o atendimento humano."
   );
 });
+dashboardElements.connectGoogleButton?.addEventListener("click", () => runAction(connectGoogleAccount));
 dashboardElements.updatePasswordButton.addEventListener("click", () => runAction(updatePassword));
 dashboardElements.botToggleButton.addEventListener("click", () => runAction(toggleBotEnabled));
 dashboardElements.upgradeButtons.forEach((button) => {

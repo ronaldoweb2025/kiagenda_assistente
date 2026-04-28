@@ -32,6 +32,7 @@ function writeAuthAccounts(store) {
 }
 
 function normalizeAccount(input = {}) {
+  const normalizedGoogleId = normalizeString(input.googleId || input.google_id);
   return {
     tenantId: normalizeTenantId(input.tenantId),
     name: normalizeString(input.name),
@@ -40,7 +41,8 @@ function normalizeAccount(input = {}) {
     email: normalizeEmail(input.email),
     passwordHash: normalizeString(input.passwordHash),
     authProvider: normalizeString(input.authProvider) || "local",
-    googleId: normalizeString(input.googleId),
+    googleId: normalizedGoogleId,
+    google_id: normalizedGoogleId,
     avatarUrl: normalizeString(input.avatarUrl),
     whatsappVerified: Boolean(input.whatsappVerified),
     whatsappVerificationCode: normalizeString(input.whatsappVerificationCode),
@@ -73,6 +75,11 @@ function findAuthAccountByWhatsapp(whatsapp) {
 function findAuthAccountByTenantId(tenantId) {
   const normalizedTenant = normalizeTenantId(tenantId);
   return listAuthAccounts().find((account) => account.tenantId === normalizedTenant) || null;
+}
+
+function findAuthAccountByGoogleId(googleId) {
+  const normalizedGoogleId = normalizeString(googleId);
+  return listAuthAccounts().find((account) => account.googleId === normalizedGoogleId) || null;
 }
 
 function upsertAuthAccount(accountInput = {}) {
@@ -123,6 +130,7 @@ module.exports = {
   authAccountsFilePath,
   deleteAuthAccountByTenantId,
   findAuthAccountByEmail,
+  findAuthAccountByGoogleId,
   findAuthAccountByTenantId,
   findAuthAccountByWhatsapp,
   listAuthAccounts,

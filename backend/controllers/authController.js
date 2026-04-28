@@ -1,11 +1,12 @@
 const {
   activateAccountWithCode,
+  authenticateWithGoogleProfile,
   createActivationCode,
   consumeMagicLinkToken,
   deactivateActivationCode,
   getActivationCodeList,
   getTenantRedirectPath,
-  loginWithGoogleProfile,
+  GOOGLE_AUTH_MODE_CONNECT,
   loginWithAdminCode,
   loginWithPassword,
   requestMagicLink,
@@ -65,7 +66,7 @@ async function postRequestMagicLink(req, res, next) {
   try {
     res.json(await requestMagicLink(req.body || {}));
   } catch (error) {
-    next(error);
+    renderGoogleAuthFailure(res, error.message || "Nao foi possivel concluir a autenticacao com Google.");
   }
 }
 
@@ -88,6 +89,17 @@ function renderGoogleAuthFailure(res, message) {
   );
 }
 
+function buildGoogleRedirectPath(result, flowState = {}) {
+  const basePath = getTenantRedirectPath(result.account.tenantId);
+
+  if (String(flowState.mode || "").toLowerCase() !== GOOGLE_AUTH_MODE_CONNECT) {
+    return basePath;
+  }
+
+  const separator = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${separator}auth_success=${encodeURIComponent("google_connected")}`;
+}
+
 async function completeGoogleAuth(req, res, next) {
   try {
     if (!isGoogleAuthConfigured()) {
@@ -100,8 +112,9 @@ async function completeGoogleAuth(req, res, next) {
       return;
     }
 
-    const result = await loginWithGoogleProfile(req.user.profile || req.user);
-    const redirectPath = getTenantRedirectPath(result.account.tenantId);
+    const flowState = req.googleAuthState || {};
+    const result = await authenticateWithGoogleProfile(req.user.profile || req.user, flowState);
+    const redirectPath = buildGoogleRedirectPath(result, flowState);
     const serializedSession = JSON.stringify(result.session).replace(/</g, "\\u003c");
 
     res.type("html").send(

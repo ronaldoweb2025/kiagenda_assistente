@@ -4,6 +4,7 @@ const { listTenants, readTenant } = require("../tenancy/tenantConfigStore");
 const { createTenant, saveTenant } = require("./tenantService");
 const {
   findAuthAccountByEmail,
+  findAuthAccountByGoogleId,
   findAuthAccountByTenantId,
   findAuthAccountByWhatsapp,
   normalizeEmail,
@@ -30,16 +31,38 @@ const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const WHATSAPP_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const WHATSAPP_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 const BCRYPT_SALT_ROUNDS = 10;
+const GOOGLE_AUTH_MODE_LOGIN = "login";
+const GOOGLE_AUTH_MODE_SIGNUP = "signup";
+const GOOGLE_AUTH_MODE_CONNECT = "connect";
+
+function resolveAccountAuthProvider(account = {}) {
+  const hasGoogle = Boolean(account.googleId || account.google_id);
+  const hasPassword = Boolean(account.passwordHash);
+
+  if (hasGoogle && hasPassword) {
+    return "local_google";
+  }
+
+  if (hasGoogle) {
+    return "google";
+  }
+
+  return "local";
+}
 
 function sanitizeAccount(account = {}) {
+  const googleId = account.googleId || account.google_id || "";
   return {
     tenantId: account.tenantId,
     name: account.name,
     businessName: account.businessName,
     whatsapp: account.whatsapp,
     email: account.email,
-    authProvider: account.authProvider || "local",
+    authProvider: resolveAccountAuthProvider(account),
     avatarUrl: account.avatarUrl || "",
+    googleId,
+    google_id: googleId,
+    googleLinked: Boolean(googleId),
     whatsappVerified: Boolean(account.whatsappVerified),
     activationStatus: account.activationStatus === "active" ? "active" : "pending"
   };
@@ -344,6 +367,7 @@ function createGoogleTenantAccount(profileData = {}) {
     passwordHash: "",
     authProvider: "google",
     googleId: profileData.googleId,
+    google_id: profileData.googleId,
     avatarUrl: profileData.avatarUrl,
     whatsappVerified: true,
     whatsappVerificationCode: "",
@@ -357,32 +381,118 @@ function createGoogleTenantAccount(profileData = {}) {
   });
 }
 
-async function loginWithGoogleProfile(profile = {}) {
-  const profileData = ensureGoogleEmail(profile);
-  let account = findAuthAccountByEmail(profileData.email);
-
-  if (!account) {
-    account = createGoogleTenantAccount(profileData);
-  } else {
-    account = upsertAuthAccount({
-      ...account,
-      name: profileData.name || account.name,
-      businessName: account.businessName || profileData.name || profileData.email,
-      authProvider: "google",
-      googleId: profileData.googleId || account.googleId,
-      avatarUrl: profileData.avatarUrl || account.avatarUrl,
-      whatsappVerified: Boolean(account.whatsappVerified) || !account.whatsapp,
-      activationStatus: account.activationStatus === "active" ? "active" : "active",
-      activationCode: account.activationCode || "",
-      activationCodeExpiresAt: account.activationCodeExpiresAt || "",
-      activationCodeUsedAt: account.activationCodeUsedAt || new Date().toISOString()
-    });
+function upsertGoogleIdentity(account, profileData, options = {}) {
+  if (!account?.tenantId) {
+    const error = new Error("Conta nao encontrada para vincular o Google.");
+    error.statusCode = 404;
+    throw error;
   }
 
+  const currentEmail = normalizeEmail(account.email);
+  const googleEmail = normalizeEmail(profileData.email);
+
+  if (options.requireSameEmail && currentEmail && currentEmail !== googleEmail) {
+    const error = new Error("Use a mesma conta de email cadastrada para conectar o Google.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const nextAccount = upsertAuthAccount({
+    ...account,
+    email: currentEmail || googleEmail,
+    name: profileData.name || account.name,
+    businessName: account.businessName || profileData.name || profileData.email,
+    authProvider: resolveAccountAuthProvider({
+      ...account,
+      googleId: profileData.googleId || account.googleId || account.google_id
+    }),
+    googleId: profileData.googleId || account.googleId || account.google_id,
+    google_id: profileData.googleId || account.googleId || account.google_id,
+    avatarUrl: profileData.avatarUrl || account.avatarUrl,
+    whatsappVerified: Boolean(account.whatsappVerified) || !account.whatsapp,
+    activationStatus: "active",
+    activationCode: account.activationCode || "",
+    activationCodeExpiresAt: account.activationCodeExpiresAt || "",
+    activationCodeUsedAt: account.activationCodeUsedAt || new Date().toISOString()
+  });
+
+  return nextAccount;
+}
+
+function buildGoogleAuthResult(account, action) {
   return {
+    action,
     account: sanitizeAccount(account),
     session: buildGoogleSessionPayload(account)
   };
+}
+
+async function authenticateWithGoogleProfile(profile = {}, options = {}) {
+  const profileData = ensureGoogleEmail(profile);
+  const mode = String(options.mode || GOOGLE_AUTH_MODE_LOGIN).trim().toLowerCase();
+  const tenantId = String(options.tenantId || "").trim();
+  const accountByGoogleId = profileData.googleId ? findAuthAccountByGoogleId(profileData.googleId) : null;
+  const accountByEmail = findAuthAccountByEmail(profileData.email);
+
+  if (mode === GOOGLE_AUTH_MODE_CONNECT) {
+    const tenantAccount = findAuthAccountByTenantId(tenantId);
+
+    if (!tenantAccount) {
+      const error = new Error("Conta nao encontrada para conectar ao Google.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (accountByGoogleId && accountByGoogleId.tenantId !== tenantAccount.tenantId) {
+      const error = new Error("Esta conta Google ja esta conectada a outro cadastro.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    if (accountByEmail && accountByEmail.tenantId !== tenantAccount.tenantId) {
+      const error = new Error("Este email Google ja pertence a outra conta do sistema.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    return buildGoogleAuthResult(
+      upsertGoogleIdentity(tenantAccount, profileData, {
+        requireSameEmail: true
+      }),
+      "connected"
+    );
+  }
+
+  if (accountByGoogleId && accountByEmail && accountByGoogleId.tenantId !== accountByEmail.tenantId) {
+    const error = new Error("Encontramos conflito entre este Google e outro cadastro existente.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (accountByGoogleId) {
+    return buildGoogleAuthResult(
+      upsertGoogleIdentity(accountByGoogleId, profileData),
+      "logged_in"
+    );
+  }
+
+  if (accountByEmail) {
+    return buildGoogleAuthResult(
+      upsertGoogleIdentity(accountByEmail, profileData),
+      "linked_existing"
+    );
+  }
+
+  return buildGoogleAuthResult(
+    createGoogleTenantAccount(profileData),
+    mode === GOOGLE_AUTH_MODE_SIGNUP ? "created" : "created_from_login"
+  );
+}
+
+async function loginWithGoogleProfile(profile = {}) {
+  return authenticateWithGoogleProfile(profile, {
+    mode: GOOGLE_AUTH_MODE_LOGIN
+  });
 }
 
 async function requestMagicLink(payload = {}) {
@@ -797,12 +907,16 @@ function isCodeExpired(codeEntry) {
 
 module.exports = {
   activateAccountWithCode,
+  authenticateWithGoogleProfile,
   buildGoogleSessionPayload,
   consumeMagicLinkToken,
   createActivationCode,
   deactivateActivationCode,
   getActivationCodeList,
   getTenantRedirectPath,
+  GOOGLE_AUTH_MODE_CONNECT,
+  GOOGLE_AUTH_MODE_LOGIN,
+  GOOGLE_AUTH_MODE_SIGNUP,
   loginWithGoogleProfile,
   loginWithAdminCode,
   loginWithPassword,
