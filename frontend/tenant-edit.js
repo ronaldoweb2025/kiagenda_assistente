@@ -1013,7 +1013,7 @@ function resetMenuForm() {
   dashboardElements.menuType.value = "customReply";
   dashboardElements.menuAliases.value = "";
   dashboardElements.menuCustomReply.value = "";
-  dashboardElements.menuCustomReplyField.classList.add("hidden-view");
+  dashboardElements.menuCustomReplyField.classList.remove("hidden-view");
   dashboardElements.addMenuButton.textContent = "Adicionar opcao";
   dashboardElements.cancelMenuEditButton.classList.add("hidden-view");
 }
@@ -1501,6 +1501,10 @@ function renderSettings() {
   dashboardElements.handoffTimeout.value = dashboardState.tenant.settings.handoffTimeout || 30;
   dashboardElements.settingsPlanDescription.textContent = `Seu plano atual: ${getPlanLabel()}`;
   dashboardElements.settingsUpgradeButton.classList.toggle("hidden-view", isProfessionalPlan());
+  dashboardElements.menuCustomReplyField.classList.toggle(
+    "hidden-view",
+    dashboardElements.menuType.value !== "customReply"
+  );
   renderGoogleConnectionStatus();
   toggleAdvancedMenu(dashboardState.advancedMenuOpen);
   renderMenuList();
