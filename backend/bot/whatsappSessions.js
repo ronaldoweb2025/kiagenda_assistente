@@ -533,22 +533,86 @@ function normalizeWhatsappRecipient(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-async function sendSystemWhatsappMessage(whatsapp, message) {
+function buildSessionDeliverySnapshot() {
+  return listTenants().map((tenant) => {
+    const session = readSession(tenant.tenantId);
+    const entry = getSessionEntry(tenant.tenantId);
+
+    return {
+      tenantId: tenant.tenantId,
+      status: session.status || "unknown",
+      connected: Boolean(session.connected),
+      runtimeReady: Boolean(entry?.isReady),
+      runtimeActive: Boolean(entry?.client),
+      sessionId: session.sessionId || "",
+      connectedWhatsappNumber: session.connectedWhatsappNumber || session.number || ""
+    };
+  });
+}
+
+async function sendSystemWhatsappMessage(whatsapp, message, options = {}) {
   const recipient = normalizeWhatsappRecipient(whatsapp);
+  const preferredTenantId = String(options.preferredTenantId || "").trim();
+  const purpose = String(options.purpose || "mensagem de sistema").trim();
   const readyEntries = getReadyClientEntries();
 
-  if (!recipient || !message || !readyEntries.length) {
+  if (!recipient || !message) {
+    console.warn(
+      `[whatsapp] Envio cancelado para ${purpose}. Destinatario ou mensagem invalidos.`,
+      {
+        recipient,
+        hasMessage: Boolean(message),
+        preferredTenantId: preferredTenantId || null
+      }
+    );
     return false;
   }
 
-  for (const entry of readyEntries) {
+  if (!readyEntries.length) {
+    console.warn(
+      `[whatsapp] Nenhuma sessao pronta para enviar ${purpose} para ${recipient}.`,
+      {
+        preferredTenantId: preferredTenantId || null,
+        sessions: buildSessionDeliverySnapshot()
+      }
+    );
+    return false;
+  }
+
+  const prioritizedEntries = preferredTenantId
+    ? [
+        ...readyEntries.filter((entry) => entry.tenantId === preferredTenantId),
+        ...readyEntries.filter((entry) => entry.tenantId !== preferredTenantId)
+      ]
+    : readyEntries;
+
+  for (const entry of prioritizedEntries) {
     try {
       await entry.client.sendMessage(`${recipient}@c.us`, String(message));
+      if (preferredTenantId && entry.tenantId !== preferredTenantId) {
+        console.warn(
+          `[whatsapp] ${purpose} para ${recipient} enviado por tenant alternativo ${entry.tenantId}.`,
+          {
+            preferredTenantId
+          }
+        );
+      }
       return true;
     } catch (error) {
-      console.error(`[tenant:${entry.tenantId}] Falha ao enviar mensagem de sistema para ${recipient}:`, error);
+      console.error(
+        `[tenant:${entry.tenantId}] Falha ao enviar ${purpose} para ${recipient}:`,
+        error
+      );
     }
   }
+
+  console.warn(
+    `[whatsapp] Todas as sessoes prontas falharam ao enviar ${purpose} para ${recipient}.`,
+    {
+      preferredTenantId: preferredTenantId || null,
+      attemptedTenants: prioritizedEntries.map((entry) => entry.tenantId)
+    }
+  );
 
   return false;
 }

@@ -4,11 +4,11 @@ const authElements = {
   firstAccessView: document.getElementById("firstAccessView"),
   forgotPasswordView: document.getElementById("forgotPasswordView"),
   registerView: document.getElementById("registerView"),
-  resetPasswordView: document.getElementById("resetPasswordView"),
   activationView: document.getElementById("activationView"),
   loginForm: document.getElementById("loginForm"),
   loginWhatsapp: document.getElementById("loginWhatsapp"),
   loginPassword: document.getElementById("loginPassword"),
+  googleLoginButton: document.getElementById("googleLoginButton"),
   openRegisterButton: document.getElementById("openRegisterButton"),
   firstAccessButton: document.getElementById("firstAccessButton"),
   forgotPasswordButton: document.getElementById("forgotPasswordButton"),
@@ -19,9 +19,9 @@ const authElements = {
   firstAccessConfirmPassword: document.getElementById("firstAccessConfirmPassword"),
   backToLoginFromFirstAccessButton: document.getElementById("backToLoginFromFirstAccessButton"),
   forgotPasswordForm: document.getElementById("forgotPasswordForm"),
-  forgotPasswordWhatsapp: document.getElementById("forgotPasswordWhatsapp"),
+  forgotPasswordEmail: document.getElementById("forgotPasswordEmail"),
   forgotPasswordDevPanel: document.getElementById("forgotPasswordDevPanel"),
-  forgotPasswordDevCode: document.getElementById("forgotPasswordDevCode"),
+  forgotPasswordDevLink: document.getElementById("forgotPasswordDevLink"),
   backToLoginFromForgotButton: document.getElementById("backToLoginFromForgotButton"),
   registerForm: document.getElementById("registerForm"),
   registerName: document.getElementById("registerName"),
@@ -36,19 +36,12 @@ const authElements = {
   resendRegisterVerificationButton: document.getElementById("resendRegisterVerificationButton"),
   registerVerificationDevPanel: document.getElementById("registerVerificationDevPanel"),
   registerVerificationDevCode: document.getElementById("registerVerificationDevCode"),
-  verifyResetCodeForm: document.getElementById("verifyResetCodeForm"),
-  resetPasswordCode: document.getElementById("resetPasswordCode"),
-  resetPasswordForm: document.getElementById("resetPasswordForm"),
-  resetPasswordNew: document.getElementById("resetPasswordNew"),
-  resetPasswordConfirm: document.getElementById("resetPasswordConfirm"),
-  backToLoginFromResetButton: document.getElementById("backToLoginFromResetButton"),
   activationForm: document.getElementById("activationForm"),
   activationCode: document.getElementById("activationCode")
 };
 
 const authState = {
-  forgotPasswordWhatsapp: "",
-  resetCodeVerified: false,
+  forgotPasswordEmail: "",
   legacyAccounts: KiagendaApp.getLegacyAuthAccounts(),
   pendingRegistration: null,
   registerVerificationCooldownUntil: 0,
@@ -66,16 +59,14 @@ function showAuthView(viewName) {
   authState.currentView = viewName;
   const isLogin = viewName === "login";
   const isFirstAccess = viewName === "first-access";
-  const isRegister = viewName === "register";
   const isForgotPassword = viewName === "forgot";
-  const isResetPassword = viewName === "reset";
+  const isRegister = viewName === "register";
   const isActivation = viewName === "activation";
 
   authElements.loginView.classList.toggle("hidden-view", !isLogin);
   authElements.firstAccessView.classList.toggle("hidden-view", !isFirstAccess);
-  authElements.registerView.classList.toggle("hidden-view", !isRegister);
   authElements.forgotPasswordView.classList.toggle("hidden-view", !isForgotPassword);
-  authElements.resetPasswordView.classList.toggle("hidden-view", !isResetPassword);
+  authElements.registerView.classList.toggle("hidden-view", !isRegister);
   authElements.activationView.classList.toggle("hidden-view", !isActivation);
 
   setFeedback("");
@@ -104,14 +95,14 @@ function showAuthView(viewName) {
 
   if (isFirstAccess) {
     authElements.firstAccessWhatsapp.value = KiagendaApp.normalizePhone(
-      authElements.firstAccessWhatsapp.value || authElements.loginWhatsapp.value || authElements.forgotPasswordWhatsapp.value
+      authElements.firstAccessWhatsapp.value || authElements.loginWhatsapp.value
     );
     authElements.firstAccessWhatsapp.focus();
     return;
   }
 
   if (isForgotPassword) {
-    authElements.forgotPasswordWhatsapp.focus();
+    authElements.forgotPasswordEmail.focus();
     return;
   }
 
@@ -119,16 +110,6 @@ function showAuthView(viewName) {
     authElements.activationCode.focus();
     return;
   }
-
-  authElements.verifyResetCodeForm.classList.toggle("hidden-view", authState.resetCodeVerified);
-  authElements.resetPasswordForm.classList.toggle("hidden-view", !authState.resetCodeVerified);
-
-  if (authState.resetCodeVerified) {
-    authElements.resetPasswordNew.focus();
-    return;
-  }
-
-  authElements.resetPasswordCode.focus();
 }
 
 function buildTenantIdCandidate(businessName, whatsapp) {
@@ -157,24 +138,26 @@ async function buildUniqueTenantId(businessName, whatsapp) {
   throw new Error("Nao foi possivel criar um codigo unico para este cliente.");
 }
 
-function clearResetPreview() {
-  authElements.forgotPasswordDevPanel.classList.add("hidden-view");
-  authElements.forgotPasswordDevCode.textContent = "";
+function clearRegisterVerificationPreview() {
+  authElements.registerVerificationDevPanel.classList.add("hidden-view");
+  authElements.registerVerificationDevCode.textContent = "";
 }
 
-function renderResetPreview(devPreview) {
-  if (!devPreview?.code) {
-    clearResetPreview();
+function clearMagicLinkPreview() {
+  authElements.forgotPasswordDevPanel.classList.add("hidden-view");
+  authElements.forgotPasswordDevLink.textContent = "";
+  authElements.forgotPasswordDevLink.removeAttribute("href");
+}
+
+function renderMagicLinkPreview(devPreview) {
+  if (!devPreview?.magicLink) {
+    clearMagicLinkPreview();
     return;
   }
 
   authElements.forgotPasswordDevPanel.classList.remove("hidden-view");
-  authElements.forgotPasswordDevCode.textContent = `Codigo de teste: ${devPreview.code}`;
-}
-
-function clearRegisterVerificationPreview() {
-  authElements.registerVerificationDevPanel.classList.add("hidden-view");
-  authElements.registerVerificationDevCode.textContent = "";
+  authElements.forgotPasswordDevLink.textContent = devPreview.magicLink;
+  authElements.forgotPasswordDevLink.href = devPreview.magicLink;
 }
 
 function renderRegisterVerificationPreview(devPreview) {
@@ -254,10 +237,26 @@ function setPendingActivation(account) {
   KiagendaApp.savePendingActivation(authState.pendingActivation);
 }
 
+function saveAuthenticatedSession(account, session = null) {
+  KiagendaApp.saveAuthSession(
+    session || {
+      tenantId: account.tenantId,
+      whatsapp: account.whatsapp,
+      email: account.email,
+      name: account.name,
+      activationStatus: account.activationStatus || "active",
+      authProvider: account.authProvider || "local",
+      avatarUrl: account.avatarUrl || "",
+      token: account.token || ""
+    }
+  );
+}
+
 async function handleLogin(event) {
   event.preventDefault();
 
-  const whatsapp = KiagendaApp.normalizePhone(authElements.loginWhatsapp.value);
+  const identifier = String(authElements.loginWhatsapp.value || "").trim();
+  const whatsapp = KiagendaApp.normalizePhone(identifier);
   const password = authElements.loginPassword.value;
   let account;
 
@@ -268,11 +267,12 @@ async function handleLogin(event) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        whatsapp,
+        identifier,
         password
       })
     });
     account = response.data;
+    saveAuthenticatedSession(account, response.session || null);
   } catch (error) {
     if (error.data?.activationStatus && error.data.activationStatus !== "active") {
       setPendingActivation(error.data);
@@ -314,13 +314,6 @@ async function handleLogin(event) {
     showAuthView("register");
     throw new Error(migrateResponse.message || "Enviamos um codigo para seu WhatsApp. Digite abaixo para confirmar sua conta.");
   }
-
-  KiagendaApp.saveAuthSession({
-    tenantId: account.tenantId,
-    whatsapp: account.whatsapp,
-    name: account.name,
-    activationStatus: account.activationStatus || "active"
-  });
   setPendingActivation(null);
 
   setFeedback("Entrada realizada com sucesso.");
@@ -466,46 +459,11 @@ async function handleActivateAccount(event) {
   });
   const account = response.data;
 
-  KiagendaApp.saveAuthSession({
-    tenantId: account.tenantId,
-    whatsapp: account.whatsapp,
-    name: account.name,
-    activationStatus: account.activationStatus || "active"
-  });
+  saveAuthenticatedSession(account, response.session || null);
   setPendingActivation(null);
   authElements.activationCode.value = "";
   setFeedback(response.message || "Conta ativada com sucesso.");
   await redirectToTenantHome(account.tenantId);
-}
-
-async function handleForgotPassword(event) {
-  event.preventDefault();
-
-  const whatsapp = KiagendaApp.normalizePhone(authElements.forgotPasswordWhatsapp.value);
-  let response;
-
-  try {
-    response = await KiagendaApp.requestJson("/api/auth/forgot-password-whatsapp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        whatsapp
-      })
-    });
-  } catch (error) {
-    throw error;
-  }
-
-  authState.forgotPasswordWhatsapp = whatsapp;
-  authState.resetCodeVerified = false;
-  authElements.resetPasswordCode.value = "";
-  authElements.resetPasswordNew.value = "";
-  authElements.resetPasswordConfirm.value = "";
-  renderResetPreview(response.devPreview || null);
-  showAuthView("reset");
-  setFeedback(response.message || "Se este WhatsApp estiver cadastrado, enviaremos um codigo de recuperacao.");
 }
 
 async function handleFirstAccess(event) {
@@ -535,49 +493,23 @@ async function handleFirstAccess(event) {
   setFeedback(response.message || "Primeiro acesso concluido com sucesso. Faca login para continuar.");
 }
 
-async function handleVerifyResetCode(event) {
+async function handleForgotPassword(event) {
   event.preventDefault();
 
-  const response = await KiagendaApp.requestJson("/api/auth/verify-reset-code", {
+  const email = String(authElements.forgotPasswordEmail.value || "").trim().toLowerCase();
+  const response = await KiagendaApp.requestJson("/api/auth/magic-link", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      whatsapp: authState.forgotPasswordWhatsapp,
-      code: authElements.resetPasswordCode.value.trim()
+      email
     })
   });
 
-  authState.resetCodeVerified = true;
-  showAuthView("reset");
-  setFeedback(response.message || "Codigo validado com sucesso.");
-}
-
-async function handleResetPassword(event) {
-  event.preventDefault();
-
-  const response = await KiagendaApp.requestJson("/api/auth/reset-password-whatsapp", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      whatsapp: authState.forgotPasswordWhatsapp,
-      code: authElements.resetPasswordCode.value.trim(),
-      newPassword: authElements.resetPasswordNew.value,
-      confirmPassword: authElements.resetPasswordConfirm.value
-    })
-  });
-
-  authState.forgotPasswordWhatsapp = "";
-  authState.resetCodeVerified = false;
-  authElements.resetPasswordCode.value = "";
-  authElements.resetPasswordNew.value = "";
-  authElements.resetPasswordConfirm.value = "";
-  clearResetPreview();
-  showAuthView("login");
-  setFeedback(response.message || "Senha atualizada com sucesso. Faca login novamente.");
+  authState.forgotPasswordEmail = email;
+  renderMagicLinkPreview(response.devPreview || null);
+  setFeedback(response.message || "Se este email estiver cadastrado, enviaremos um link de acesso para sua conta.");
 }
 
 async function restoreSession() {
@@ -622,6 +554,15 @@ async function runAction(action) {
   }
 }
 
+async function initializeGoogleLogin() {
+  try {
+    const response = await KiagendaApp.requestJson("/auth/google/status");
+    authElements.googleLoginButton.classList.toggle("hidden-view", !response.enabled);
+  } catch (error) {
+    authElements.googleLoginButton.classList.add("hidden-view");
+  }
+}
+
 authElements.openRegisterButton.addEventListener("click", () => showAuthView("register"));
 authElements.firstAccessButton.addEventListener("click", () => showAuthView("first-access"));
 authElements.backToLoginButton.addEventListener("click", () => {
@@ -633,39 +574,38 @@ authElements.backToLoginFromFirstAccessButton.addEventListener("click", () => {
   showAuthView("login");
 });
 authElements.backToLoginFromForgotButton.addEventListener("click", () => {
-  authState.forgotPasswordWhatsapp = "";
-  authState.resetCodeVerified = false;
-  clearResetPreview();
+  authState.forgotPasswordEmail = "";
+  authElements.forgotPasswordEmail.value = "";
+  clearMagicLinkPreview();
   showAuthView("login");
 });
-authElements.backToLoginFromResetButton.addEventListener("click", () => {
-  authState.forgotPasswordWhatsapp = "";
-  authState.resetCodeVerified = false;
-  authElements.resetPasswordCode.value = "";
-  authElements.resetPasswordNew.value = "";
-  authElements.resetPasswordConfirm.value = "";
-  clearResetPreview();
-  showAuthView("login");
+authElements.googleLoginButton.addEventListener("click", () => {
+  window.location.href = "/auth/google";
+});
+authElements.forgotPasswordButton.addEventListener("click", () => {
+  authState.forgotPasswordEmail = "";
+  authElements.forgotPasswordEmail.value = "";
+  clearMagicLinkPreview();
+  showAuthView("forgot");
 });
 authElements.loginForm.addEventListener("submit", (event) => runAction(() => handleLogin(event)));
 authElements.firstAccessForm.addEventListener("submit", (event) => runAction(() => handleFirstAccess(event)));
+authElements.forgotPasswordForm.addEventListener("submit", (event) => runAction(() => handleForgotPassword(event)));
 authElements.registerForm.addEventListener("submit", (event) => runAction(() => handleRegister(event)));
 authElements.registerVerificationForm.addEventListener("submit", (event) => runAction(() => handleRegisterVerification(event)));
 authElements.resendRegisterVerificationButton.addEventListener("click", () => runAction(handleResendRegisterVerification));
 authElements.activationForm.addEventListener("submit", (event) => runAction(() => handleActivateAccount(event)));
-authElements.forgotPasswordButton.addEventListener("click", () => {
-  clearResetPreview();
-  authState.forgotPasswordWhatsapp = "";
-  authState.resetCodeVerified = false;
-  authElements.forgotPasswordWhatsapp.value = "";
-  showAuthView("forgot");
-});
-authElements.forgotPasswordForm.addEventListener("submit", (event) => runAction(() => handleForgotPassword(event)));
-authElements.verifyResetCodeForm.addEventListener("submit", (event) => runAction(() => handleVerifyResetCode(event)));
-authElements.resetPasswordForm.addEventListener("submit", (event) => runAction(() => handleResetPassword(event)));
 
 async function initializeAuthPage() {
   try {
+    await initializeGoogleLogin();
+
+    const authError = KiagendaApp.getQueryParam("auth_error");
+    if (authError) {
+      setFeedback(authError, "error");
+      window.history.replaceState({}, document.title, "/");
+    }
+
     const result = await restoreSession();
 
     if (!result && !authState.currentView) {

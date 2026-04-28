@@ -1,8 +1,12 @@
+require("dotenv").config();
+
 const express = require("express");
+const session = require("express-session");
 const path = require("path");
 const authRoutes = require("./routes/authRoutes");
 const tenantAdminRoutes = require("./routes/tenantAdminRoutes");
 const tenantRuntimeRoutes = require("./routes/tenantRuntimeRoutes");
+const { passport } = require("./auth/googleAuth");
 const { bootstrapTenantConfigStore } = require("./tenancy/tenantConfigStore");
 const { bootstrapTenantSessionStore } = require("./tenancy/tenantSessionStore");
 const { bootstrapTenantStateStore } = require("./tenancy/tenantStateStore");
@@ -16,7 +20,21 @@ bootstrapTenantConfigStore();
 bootstrapTenantSessionStore();
 bootstrapTenantStateStore();
 
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || process.env.JWT_SECRET || "kiagenda-dev-session-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: false
+    }
+  })
+);
 app.use(express.json({ limit: "1mb" }));
+app.use(passport.initialize());
+app.use(passport.session());
 app.use(express.static(frontendPath));
 app.use(authRoutes);
 app.use(tenantAdminRoutes);

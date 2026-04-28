@@ -23,8 +23,8 @@
           <form id="loginForm" class="auth-form">
             <p class="auth-form-title">Entre para continuar</p>
             <label>
-              N&uacute;mero do WhatsApp
-              <input id="loginWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="username">
+              WhatsApp ou email
+              <input id="loginWhatsapp" type="text" placeholder="Ex.: 5535999999999 ou voce@email.com" autocomplete="username">
             </label>
             <label>
               Senha
@@ -32,6 +32,17 @@
             </label>
             <div class="auth-actions">
               <button class="primary-button auth-submit" type="submit">Entrar</button>
+              <button id="googleLoginButton" class="google-login-button auth-submit hidden-view" type="button">
+                <span class="google-login-mark" aria-hidden="true">
+                  <svg viewBox="0 0 18 18" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="#EA4335" d="M9 7.364v3.518h4.89c-.215 1.132-.86 2.09-1.827 2.733l2.955 2.291c1.723-1.587 2.714-3.923 2.714-6.706 0-.645-.058-1.264-.164-1.836H9z"/>
+                    <path fill="#34A853" d="M9 18c2.457 0 4.518-.815 6.024-2.094l-2.955-2.291c-.815.546-1.855.87-3.069.87-2.363 0-4.366-1.596-5.082-3.741H.866v2.364A9.092 9.092 0 0 0 9 18z"/>
+                    <path fill="#4A90E2" d="M3.918 10.744A5.462 5.462 0 0 1 3.635 9c0-.605.103-1.191.283-1.744V4.892H.866A9.092 9.092 0 0 0 0 9c0 1.468.35 2.855.866 4.108l3.052-2.364z"/>
+                    <path fill="#FBBC05" d="M9 3.515c1.337 0 2.54.46 3.486 1.362l2.61-2.609C13.514.8 11.455 0 9 0A9.092 9.092 0 0 0 .866 4.892l3.052 2.364C4.634 5.111 6.637 3.515 9 3.515z"/>
+                  </svg>
+                </span>
+                <span>Entrar com Google</span>
+              </button>
             </div>
           </form>
 
@@ -39,6 +50,30 @@
             <button id="openRegisterButton" class="link-button auth-link-button" type="button">Criar conta</button>
             <button id="firstAccessButton" class="link-button auth-link-button" type="button">Primeiro acesso</button>
             <button id="forgotPasswordButton" class="link-button auth-link-button muted" type="button">Esqueci minha senha</button>
+          </div>
+        </section>
+
+        <section id="forgotPasswordView" class="hidden-view">
+          <form id="forgotPasswordForm" class="auth-form">
+            <p class="auth-form-title">Entrar por link de acesso</p>
+            <p class="muted-copy">Informe seu email cadastrado e enviaremos um Magic Link para entrar na sua conta.</p>
+            <label>
+              Email cadastrado
+              <input id="forgotPasswordEmail" type="email" placeholder="voce@email.com" autocomplete="email">
+            </label>
+            <div class="auth-actions">
+              <button class="secondary-button auth-submit" type="submit">Enviar Magic Link</button>
+            </div>
+          </form>
+
+          <div id="forgotPasswordDevPanel" class="auth-dev-panel hidden-view">
+            <p class="auth-dev-title">Ambiente local</p>
+            <p class="muted-copy">Se o SMTP ainda nao estiver configurado, use o link abaixo para testar.</p>
+            <a id="forgotPasswordDevLink" class="auth-dev-link" href="#" target="_blank" rel="noreferrer"></a>
+          </div>
+
+          <div class="auth-links auth-links-single">
+            <button id="backToLoginFromForgotButton" class="link-button auth-link-button" type="button">Voltar para login</button>
           </div>
         </section>
 
@@ -69,29 +104,6 @@
 
           <div class="auth-links auth-links-single">
             <button id="backToLoginFromFirstAccessButton" class="link-button auth-link-button" type="button">Voltar para login</button>
-          </div>
-        </section>
-
-        <section id="forgotPasswordView" class="hidden-view">
-          <form id="forgotPasswordForm" class="auth-form">
-            <p class="auth-form-title">Recuperar senha</p>
-            <label>
-              WhatsApp cadastrado
-              <input id="forgotPasswordWhatsapp" type="text" inputmode="tel" placeholder="Ex.: 5535999999999" autocomplete="tel">
-            </label>
-            <div class="auth-actions">
-              <button class="secondary-button auth-submit" type="submit">Enviar c&oacute;digo</button>
-            </div>
-          </form>
-
-          <div id="forgotPasswordDevPanel" class="auth-dev-panel hidden-view">
-            <p class="auth-dev-title">Ambiente local</p>
-            <p class="muted-copy">Se o envio pelo WhatsApp n&atilde;o estiver dispon&iacute;vel, use o c&oacute;digo abaixo para teste.</p>
-            <p id="forgotPasswordDevCode" class="auth-dev-token"></p>
-          </div>
-
-          <div class="auth-links auth-links-single">
-            <button id="backToLoginFromForgotButton" class="link-button auth-link-button" type="button">Voltar para login</button>
           </div>
         </section>
 
@@ -151,37 +163,6 @@
             <p class="auth-dev-title">Ambiente local</p>
             <p class="muted-copy">Se o WhatsApp central estiver indispon&iacute;vel, use o c&oacute;digo abaixo para teste.</p>
             <p id="registerVerificationDevCode" class="auth-dev-token"></p>
-          </div>
-        </section>
-
-        <section id="resetPasswordView" class="hidden-view">
-          <form id="verifyResetCodeForm" class="auth-form">
-            <p class="auth-form-title">Redefinir senha</p>
-            <label>
-              C&oacute;digo recebido
-              <input id="resetPasswordCode" type="text" inputmode="numeric" maxlength="6" placeholder="Digite o c&oacute;digo de 6 d&iacute;gitos">
-            </label>
-            <div class="auth-actions">
-              <button class="neutral-button auth-submit" type="submit">Verificar c&oacute;digo</button>
-            </div>
-          </form>
-
-          <form id="resetPasswordForm" class="auth-form hidden-view">
-            <label>
-              Nova senha
-              <input id="resetPasswordNew" type="password" placeholder="Digite a nova senha" autocomplete="new-password">
-            </label>
-            <label>
-              Confirmar nova senha
-              <input id="resetPasswordConfirm" type="password" placeholder="Repita a nova senha" autocomplete="new-password">
-            </label>
-            <div class="auth-actions">
-              <button class="primary-button auth-submit" type="submit">Atualizar senha</button>
-            </div>
-          </form>
-
-          <div class="auth-links auth-links-single">
-            <button id="backToLoginFromResetButton" class="link-button auth-link-button" type="button">Voltar para login</button>
           </div>
         </section>
 

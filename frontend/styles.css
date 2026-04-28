@@ -126,6 +126,36 @@ body.auth-page-loading .auth-card {
   min-height: 50px;
 }
 
+.google-login-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 14px;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+}
+
+.google-login-button:hover {
+  background: #f8fafc;
+}
+
+.google-login-button:focus-visible {
+  outline: 3px solid rgba(29, 78, 216, 0.18);
+  outline-offset: 2px;
+}
+
+.google-login-mark {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .auth-links {
   display: grid;
   gap: 10px;

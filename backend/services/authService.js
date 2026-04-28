@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { listTenants, readTenant } = require("../tenancy/tenantConfigStore");
+const { createTenant, saveTenant } = require("./tenantService");
 const {
   findAuthAccountByEmail,
   findAuthAccountByTenantId,
@@ -10,28 +11,22 @@ const {
   upsertAuthAccount
 } = require("../tenancy/authAccountStore");
 const {
-  readPasswordResetCode,
-  savePasswordResetCode,
-  updatePasswordResetCode
-} = require("../tenancy/passwordResetCodeStore");
-const {
-  readPasswordResetToken,
-  savePasswordResetToken,
-  updatePasswordResetToken
-} = require("../tenancy/passwordResetTokenStore");
-const {
   listAdminAccessCodes,
   readAdminAccessCode,
   saveAdminAccessCode,
   updateAdminAccessCode
 } = require("../tenancy/adminAccessCodeStore");
-const { DEFAULT_APP_BASE_URL, isDevelopmentMode, sendPasswordResetEmail } = require("./emailService");
+const {
+  readMagicToken,
+  saveMagicToken,
+  updateMagicToken
+} = require("../tenancy/magicTokenStore");
+const { DEFAULT_APP_BASE_URL, isDevelopmentMode, sendMagicLinkEmail } = require("./emailService");
 const { sendSystemWhatsappMessage } = require("../bot/whatsappSessions");
-const { saveTenant } = require("./tenantService");
+const { buildClientSession } = require("./sessionTokenService");
 
 const PASSWORD_MIN_LENGTH = 6;
-const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
-const PASSWORD_RESET_CODE_TTL_MS = 10 * 60 * 1000;
+const MAGIC_LINK_TTL_MS = 15 * 60 * 1000;
 const WHATSAPP_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const WHATSAPP_VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 const BCRYPT_SALT_ROUNDS = 10;
@@ -43,9 +38,96 @@ function sanitizeAccount(account = {}) {
     businessName: account.businessName,
     whatsapp: account.whatsapp,
     email: account.email,
+    authProvider: account.authProvider || "local",
+    avatarUrl: account.avatarUrl || "",
     whatsappVerified: Boolean(account.whatsappVerified),
     activationStatus: account.activationStatus === "active" ? "active" : "pending"
   };
+}
+
+function normalizeTenantIdCandidate(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, "")
+    .slice(0, 24);
+}
+
+function buildGoogleTenantId(email, name) {
+  const emailPrefix = String(normalizeEmail(email || "").split("@")[0] || "");
+  const base = normalizeTenantIdCandidate(name || emailPrefix || "cliente-google") || "cliente-google";
+  const hashSuffix = crypto
+    .createHash("sha1")
+    .update(String(normalizeEmail(email || "")))
+    .digest("hex")
+    .slice(0, 6);
+
+  return `${base}-${hashSuffix}`;
+}
+
+function buildTenantIdAvailability(baseTenantId) {
+  const tenantIds = new Set(listTenants().map((tenant) => String(tenant.tenantId || "").trim().toLowerCase()));
+
+  if (!tenantIds.has(baseTenantId.toLowerCase())) {
+    return baseTenantId;
+  }
+
+  for (let index = 2; index <= 99; index += 1) {
+    const candidate = `${baseTenantId}-${index}`;
+    if (!tenantIds.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+  }
+
+  return `${baseTenantId}-${Date.now().toString().slice(-4)}`;
+}
+
+function buildGoogleSessionPayload(account = {}) {
+  return buildClientSession(sanitizeAccount(account));
+}
+
+function buildMagicLinkUrl(token) {
+  return `${DEFAULT_APP_BASE_URL}/auth/magic?token=${encodeURIComponent(token)}`;
+}
+
+function buildGenericMagicLinkResponse(devPreview = null) {
+  return {
+    message: "Se este email estiver cadastrado, enviaremos um link de acesso para sua conta.",
+    ...(devPreview ? { devPreview } : {})
+  };
+}
+
+function getTenantRedirectPath(tenantId) {
+  const tenant = readTenant(tenantId);
+  const targetPage = tenant.onboardingCompleted === true ? "tenant-edit.html" : "onboarding.html";
+  return `/${targetPage}?id=${encodeURIComponent(tenantId)}`;
+}
+
+function extractGoogleProfileData(profile = {}) {
+  const email = normalizeEmail(
+    profile?.emails?.find((item) => item?.verified)?.value ||
+    profile?.emails?.[0]?.value ||
+    ""
+  );
+
+  return {
+    email,
+    name: String(profile?.displayName || "").trim() || "Cliente Google",
+    avatarUrl: String(profile?.photos?.[0]?.value || "").trim(),
+    googleId: String(profile?.id || "").trim()
+  };
+}
+
+function ensureGoogleEmail(profile = {}) {
+  const profileData = extractGoogleProfileData(profile);
+
+  if (!profileData.email) {
+    const error = new Error("Nao foi possivel identificar o email da conta Google.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return profileData;
 }
 
 function findClientTenantByWhatsapp(whatsapp) {
@@ -201,12 +283,16 @@ async function startFirstAccess(payload = {}) {
 }
 
 async function loginWithPassword(payload = {}) {
-  const whatsapp = normalizePhone(payload.whatsapp);
+  const rawIdentifier = String(payload.email || payload.whatsapp || payload.identifier || "").trim();
+  const whatsapp = normalizePhone(rawIdentifier);
+  const email = normalizeEmail(rawIdentifier);
   const password = String(payload.password || "");
-  const account = findAuthAccountByWhatsapp(whatsapp);
+  const account = rawIdentifier.includes("@")
+    ? findAuthAccountByEmail(email)
+    : findAuthAccountByWhatsapp(whatsapp);
 
   if (!account || !(await verifyPassword(password, account.passwordHash))) {
-    const error = new Error("Numero do WhatsApp ou senha invalidos.");
+    const error = new Error("Email/WhatsApp ou senha invalidos.");
     error.statusCode = 401;
     throw error;
   }
@@ -225,6 +311,156 @@ async function loginWithPassword(payload = {}) {
   }
 
   return sanitizeAccount(account);
+}
+
+function createGoogleTenantAccount(profileData = {}) {
+  const baseTenantId = buildGoogleTenantId(profileData.email, profileData.name);
+  const tenantId = buildTenantIdAvailability(baseTenantId);
+  const businessName = profileData.name || profileData.email;
+
+  createTenant({
+    tenantId,
+    type: "client",
+    onboardingCompleted: false,
+    business: {
+      name: businessName,
+      attendantName: profileData.name || "Responsavel",
+      type: "",
+      location: "",
+      description: ""
+    },
+    whatsapp: {
+      number: "",
+      sessionId: `${tenantId}-session`
+    }
+  });
+
+  return upsertAuthAccount({
+    tenantId,
+    name: profileData.name || "Responsavel",
+    businessName,
+    whatsapp: "",
+    email: profileData.email,
+    passwordHash: "",
+    authProvider: "google",
+    googleId: profileData.googleId,
+    avatarUrl: profileData.avatarUrl,
+    whatsappVerified: true,
+    whatsappVerificationCode: "",
+    whatsappVerificationExpiresAt: "",
+    whatsappVerificationSentAt: "",
+    whatsappVerificationUsedAt: new Date().toISOString(),
+    activationStatus: "active",
+    activationCode: "",
+    activationCodeExpiresAt: "",
+    activationCodeUsedAt: new Date().toISOString()
+  });
+}
+
+async function loginWithGoogleProfile(profile = {}) {
+  const profileData = ensureGoogleEmail(profile);
+  let account = findAuthAccountByEmail(profileData.email);
+
+  if (!account) {
+    account = createGoogleTenantAccount(profileData);
+  } else {
+    account = upsertAuthAccount({
+      ...account,
+      name: profileData.name || account.name,
+      businessName: account.businessName || profileData.name || profileData.email,
+      authProvider: "google",
+      googleId: profileData.googleId || account.googleId,
+      avatarUrl: profileData.avatarUrl || account.avatarUrl,
+      whatsappVerified: Boolean(account.whatsappVerified) || !account.whatsapp,
+      activationStatus: account.activationStatus === "active" ? "active" : "active",
+      activationCode: account.activationCode || "",
+      activationCodeExpiresAt: account.activationCodeExpiresAt || "",
+      activationCodeUsedAt: account.activationCodeUsedAt || new Date().toISOString()
+    });
+  }
+
+  return {
+    account: sanitizeAccount(account),
+    session: buildGoogleSessionPayload(account)
+  };
+}
+
+async function requestMagicLink(payload = {}) {
+  const email = normalizeEmail(payload.email);
+
+  if (!email) {
+    return buildGenericMagicLinkResponse();
+  }
+
+  const account = findAuthAccountByEmail(email);
+
+  if (!account) {
+    return buildGenericMagicLinkResponse();
+  }
+
+  const token = crypto.randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_MS).toISOString();
+  const magicLink = buildMagicLinkUrl(token);
+
+  saveMagicToken(token, {
+    token,
+    email: account.email,
+    tenantId: account.tenantId,
+    used: false,
+    createdAt: new Date().toISOString(),
+    expiresAt
+  });
+
+  await sendMagicLinkEmail({
+    email: account.email,
+    recipientName: account.name || account.businessName || "cliente",
+    magicLink,
+    expiresMinutes: 15
+  });
+
+  if (!isDevelopmentMode()) {
+    return buildGenericMagicLinkResponse();
+  }
+
+  return buildGenericMagicLinkResponse({
+    magicLink,
+    token,
+    expiresAt
+  });
+}
+
+function isMagicTokenExpired(tokenEntry) {
+  return !tokenEntry?.expiresAt || new Date(tokenEntry.expiresAt).getTime() <= Date.now();
+}
+
+async function consumeMagicLinkToken(token) {
+  const normalizedToken = String(token || "").trim();
+  const tokenEntry = readMagicToken(normalizedToken);
+
+  if (!tokenEntry || tokenEntry.used || isMagicTokenExpired(tokenEntry)) {
+    const error = new Error("Link invalido ou expirado.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const account = findAuthAccountByEmail(tokenEntry.email);
+
+  if (!account) {
+    const error = new Error("Conta nao encontrada para este link.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  updateMagicToken(normalizedToken, {
+    ...tokenEntry,
+    used: true,
+    usedAt: new Date().toISOString()
+  });
+
+  return {
+    account: sanitizeAccount(account),
+    session: buildClientSession(account)
+  };
 }
 
 function generateAdminAccessCode() {
@@ -437,9 +673,25 @@ async function issueWhatsappVerificationCode(account, options = {}) {
   let delivered = false;
 
   try {
-    delivered = await sendSystemWhatsappMessage(nextAccount.whatsapp, buildWhatsappVerificationMessage(code));
+    delivered = await sendSystemWhatsappMessage(
+      nextAccount.whatsapp,
+      buildWhatsappVerificationMessage(code),
+      {
+        preferredTenantId: nextAccount.tenantId,
+        purpose: "codigo de verificacao de cadastro"
+      }
+    );
   } catch (error) {
     console.error("Falha ao enviar codigo de verificacao do cadastro por WhatsApp:", error);
+  }
+
+  if (!delivered) {
+    console.warn(
+      `[auth] Codigo de verificacao do cadastro nao foi entregue para ${nextAccount.whatsapp}.`,
+      {
+        tenantId: nextAccount.tenantId
+      }
+    );
   }
 
   if (!delivered && isDevelopmentMode()) {
@@ -535,57 +787,6 @@ async function updatePasswordByTenant(payload = {}) {
   return sanitizeAccount(nextAccount);
 }
 
-function buildGenericForgotPasswordResponse(devPreview = null) {
-  return {
-    message: "Se este email estiver cadastrado, enviaremos as instrucoes de recuperacao.",
-    ...(devPreview ? { devPreview } : {})
-  };
-}
-
-function buildGenericForgotPasswordWhatsappResponse(devPreview = null) {
-  return {
-    message: "Se este WhatsApp estiver cadastrado, enviaremos um codigo de recuperacao.",
-    ...(devPreview ? { devPreview } : {})
-  };
-}
-
-async function forgotPassword(payload = {}) {
-  const email = normalizeEmail(payload.email);
-
-  if (!email) {
-    return buildGenericForgotPasswordResponse();
-  }
-
-  const account = findAuthAccountByEmail(email);
-
-  if (!account) {
-    return buildGenericForgotPasswordResponse();
-  }
-
-  const token = crypto.randomBytes(24).toString("hex");
-  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
-  const resetLink = `${DEFAULT_APP_BASE_URL}/?token=${encodeURIComponent(token)}`;
-
-  savePasswordResetToken(token, {
-    email: account.email,
-    expiresAt,
-    used: false,
-    createdAt: new Date().toISOString()
-  });
-
-  await sendPasswordResetEmail(account.email, resetLink);
-
-  if (!isDevelopmentMode()) {
-    return buildGenericForgotPasswordResponse();
-  }
-
-  return buildGenericForgotPasswordResponse({
-    resetLink,
-    token,
-    expiresAt
-  });
-}
-
 function generateResetCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
@@ -594,180 +795,22 @@ function isCodeExpired(codeEntry) {
   return !codeEntry?.expiresAt || new Date(codeEntry.expiresAt).getTime() <= Date.now();
 }
 
-async function forgotPasswordWhatsapp(payload = {}) {
-  const whatsapp = normalizePhone(payload.whatsapp);
-  const account = findAuthAccountByWhatsapp(whatsapp);
-
-  if (!account) {
-    return buildGenericForgotPasswordWhatsappResponse();
-  }
-
-  const code = generateResetCode();
-  const expiresAt = new Date(Date.now() + PASSWORD_RESET_CODE_TTL_MS).toISOString();
-  const codeMessage =
-    `Seu codigo de recuperacao do KiAgenda e: ${code}\n` +
-    "Esse codigo expira em 10 minutos.";
-
-  savePasswordResetCode(whatsapp, {
-    whatsapp,
-    code,
-    expiresAt,
-    used: false,
-    verified: false,
-    createdAt: new Date().toISOString()
-  });
-
-  let delivered = false;
-
-  try {
-    delivered = await sendSystemWhatsappMessage(whatsapp, codeMessage);
-  } catch (error) {
-    console.error("Falha ao enviar codigo de recuperacao por WhatsApp:", error);
-  }
-
-  if (!delivered && isDevelopmentMode()) {
-    console.log(`[auth] Codigo de recuperacao WhatsApp para ${whatsapp}: ${code}`);
-  }
-
-  if (!isDevelopmentMode()) {
-    return buildGenericForgotPasswordWhatsappResponse();
-  }
-
-  return buildGenericForgotPasswordWhatsappResponse(
-    delivered
-      ? null
-      : {
-          code,
-          expiresAt
-        }
-  );
-}
-
-async function verifyResetCode(payload = {}) {
-  const whatsapp = normalizePhone(payload.whatsapp);
-  const code = String(payload.code || "").trim();
-  const codeEntry = readPasswordResetCode(whatsapp);
-
-  if (!codeEntry || codeEntry.used || isCodeExpired(codeEntry) || String(codeEntry.code) !== code) {
-    const error = new Error("Codigo invalido ou expirado.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  updatePasswordResetCode(whatsapp, {
-    ...codeEntry,
-    verified: true,
-    verifiedAt: new Date().toISOString()
-  });
-
-  return {
-    message: "Codigo validado com sucesso."
-  };
-}
-
-async function resetPasswordWhatsapp(payload = {}) {
-  const whatsapp = normalizePhone(payload.whatsapp);
-  const code = String(payload.code || "").trim();
-  const codeEntry = readPasswordResetCode(whatsapp);
-
-  assertPasswordConfirmation(payload.newPassword, payload.confirmPassword);
-
-  if (
-    !codeEntry ||
-    codeEntry.used ||
-    isCodeExpired(codeEntry) ||
-    !codeEntry.verified ||
-    String(codeEntry.code) !== code
-  ) {
-    const error = new Error("Codigo invalido ou expirado.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const account = findAuthAccountByWhatsapp(whatsapp);
-
-  if (!account) {
-    const error = new Error("Codigo invalido ou expirado.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const passwordHash = await hashPassword(payload.newPassword);
-
-  upsertAuthAccount({
-    ...account,
-    passwordHash
-  });
-
-  updatePasswordResetCode(whatsapp, {
-    ...codeEntry,
-    used: true,
-    usedAt: new Date().toISOString()
-  });
-
-  return {
-    message: "Senha atualizada com sucesso. Faca login novamente."
-  };
-}
-
-function isTokenExpired(tokenEntry) {
-  return !tokenEntry?.expiresAt || new Date(tokenEntry.expiresAt).getTime() <= Date.now();
-}
-
-async function resetPassword(payload = {}) {
-  const token = String(payload.token || "").trim();
-  const tokenEntry = readPasswordResetToken(token);
-
-  assertPasswordConfirmation(payload.newPassword, payload.confirmPassword);
-
-  if (!tokenEntry || tokenEntry.used || isTokenExpired(tokenEntry)) {
-    const error = new Error("Token invalido ou expirado.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const account = findAuthAccountByEmail(tokenEntry.email);
-
-  if (!account) {
-    const error = new Error("Token invalido ou expirado.");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const passwordHash = await hashPassword(payload.newPassword);
-
-  upsertAuthAccount({
-    ...account,
-    passwordHash
-  });
-
-  updatePasswordResetToken(token, {
-    ...tokenEntry,
-    used: true,
-    usedAt: new Date().toISOString()
-  });
-
-  return {
-    message: "Senha atualizada com sucesso. Faca login novamente."
-  };
-}
-
 module.exports = {
-  forgotPassword,
-  forgotPasswordWhatsapp,
   activateAccountWithCode,
+  buildGoogleSessionPayload,
+  consumeMagicLinkToken,
   createActivationCode,
   deactivateActivationCode,
   getActivationCodeList,
+  getTenantRedirectPath,
+  loginWithGoogleProfile,
   loginWithAdminCode,
   loginWithPassword,
+  requestMagicLink,
   registerAuthAccount,
   resendWhatsappVerificationCode,
-  resetPassword,
-  resetPasswordWhatsapp,
   sanitizeAccount,
   startFirstAccess,
   updatePasswordByTenant,
-  verifyWhatsappRegistration,
-  verifyResetCode
+  verifyWhatsappRegistration
 };
