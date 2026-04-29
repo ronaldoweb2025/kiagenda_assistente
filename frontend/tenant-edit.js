@@ -1647,6 +1647,20 @@ function getOrCreateDynamicCategoriesManager() {
   return manager;
 }
 
+function removeLegacyCatalogMarkup() {
+  const productsSection = document.querySelector('[data-section="products"] .section-card');
+
+  if (!productsSection) {
+    return;
+  }
+
+  productsSection.querySelectorAll(".tab-switch, .catalog-panel").forEach((node) => {
+    if (node?.parentNode) {
+      node.parentNode.removeChild(node);
+    }
+  });
+}
+
 function setActiveCategory(categoryId) {
   dashboardState.activeCategoryId = categoryId;
   dashboardState.editingCategoryItemId = "";
@@ -1809,6 +1823,7 @@ function getEditingCategoryItem() {
 
 function renderDynamicCategoriesManager() {
   ensureTenantCategories();
+  removeLegacyCatalogMarkup();
   const manager = getOrCreateDynamicCategoriesManager();
 
   if (!manager) {
@@ -1838,15 +1853,6 @@ function renderDynamicCategoriesManager() {
   const editingItem = getEditingCategoryItem();
   const currentPlan = getCurrentPlanSettings();
   const showMediaFields = canUseFeatureInPanel("images");
-  const hiddenLegacyPanel = document.querySelector('[data-section="products"] .tab-switch');
-  const oldPanels = document.querySelectorAll('[data-section="products"] .catalog-panel');
-
-  if (hiddenLegacyPanel) {
-    hiddenLegacyPanel.classList.add("hidden-view");
-  }
-
-  oldPanels.forEach((panel) => panel.classList.add("hidden-view"));
-
   manager.innerHTML = `
     <div class="section-subcard">
       <div class="section-subcard-header">
@@ -1875,7 +1881,7 @@ function renderDynamicCategoriesManager() {
         </div>
       </div>
       <div class="section-subcard">
-        <h4>${editingItem ? "Editar item" : "Adicionar item"}</h4>
+        <h4>Adicionar item na categoria selecionada</h4>
         <div class="field-grid">
           <label>Nome<input id="dynamicCategoryItemName" type="text" value="${KiagendaApp.escapeHtml(editingItem?.name || "")}"></label>
           <label>Oferta<input id="dynamicCategoryItemOffer" type="text" value="${KiagendaApp.escapeHtml(editingItem?.offer || "")}" placeholder="Ex.: Condicao especial"></label>
