@@ -1,9 +1,14 @@
+const {
+  findCategoryById,
+  getActiveCatalogCategoriesWithItems
+} = require("../utils/catalogCategories");
+
 function joinAliases(items) {
   return items.filter(Boolean).join(", ");
 }
 
 function buildSeparator() {
-  return "━━━━━━━━━━━━";
+  return "------------";
 }
 
 function joinBlocks(blocks) {
@@ -21,21 +26,18 @@ function hasCustomerProfile(state) {
 
 function buildDynamicMenuLines(config) {
   const lines = [];
+  const categories = getActiveCatalogCategoriesWithItems(config);
 
-  if (Array.isArray(config.services) && config.services.length) {
-    lines.push("• Servicos (digite: servicos)");
-  }
-
-  if (Array.isArray(config.products) && config.products.length) {
-    lines.push("• Produtos (digite: produtos)");
-  }
+  categories.forEach((category, index) => {
+    const trigger = category.keywords?.[0] || category.name;
+    lines.push(`${index + 1}. ${category.name}${trigger ? ` (digite: ${trigger})` : ""}`);
+  });
 
   if (Array.isArray(config.links) && config.links.length) {
-    lines.push("• Links (digite: links)");
+    lines.push(`${lines.length + 1}. Links importantes (digite: links)`);
   }
 
-  lines.push("• Falar com atendimento (digite: atendimento)");
-
+  lines.push(`${lines.length + 1}. Falar com atendimento (digite: atendimento)`);
   return lines;
 }
 
@@ -44,7 +46,7 @@ function buildProfileCollectionPrompt(config) {
     `Ola! Seja bem-vindo(a) ao ${config.business.name || "nosso negocio"}`,
     "Sou um assistente, mas estou aqui para agilizar seu atendimento.",
     "Para comecar, me diga:",
-    "• Seu nome\n• De qual cidade ou regiao voce esta falando"
+    "- Seu nome\n- De qual cidade ou regiao voce esta falando"
   ]);
 }
 
@@ -61,7 +63,7 @@ function buildPersonalizedMenuMessage(config, state) {
 function buildProfileCollectionRetryMessage() {
   return joinBlocks([
     "Para eu continuar, me envie estas duas informacoes na mesma mensagem:",
-    "• Seu nome\n• Sua cidade ou regiao"
+    "- Seu nome\n- Sua cidade ou regiao"
   ]);
 }
 
@@ -80,10 +82,6 @@ function buildWelcomeMessage(config) {
 function buildMenuMessage(config) {
   const enabledItems = buildDynamicMenuLines(config);
 
-  if (Array.isArray(config.partnerships) && config.partnerships.length) {
-    enabledItems.splice(Math.max(0, enabledItems.length - 1), 0, "- Parcerias e revenda (digite: parcerias)");
-  }
-
   if (!enabledItems.length) {
     return "No momento nao ha opcoes ativas no menu.";
   }
@@ -101,18 +99,51 @@ function buildBusinessMessage(config) {
   return lines.filter(Boolean).join("\n");
 }
 
+function resolveCatalogTarget(config, target, fallbackTitle = "", fallbackSingularLabel = "item") {
+  if (typeof target === "object" && target) {
+    return {
+      id: target.id || "",
+      title: target.name || fallbackTitle || "Categoria",
+      singularLabel: fallbackSingularLabel,
+      items: Array.isArray(target.items) ? target.items : []
+    };
+  }
+
+  const category = findCategoryById(config, String(target || ""));
+
+  if (category) {
+    return {
+      id: category.id,
+      title: category.name,
+      singularLabel: fallbackSingularLabel,
+      items: Array.isArray(category.items) ? category.items : []
+    };
+  }
+
+  const items = Array.isArray(config?.[target]) ? config[target] : [];
+
+  return {
+    id: String(target || ""),
+    title: fallbackTitle || "Categoria",
+    singularLabel: fallbackSingularLabel,
+    items
+  };
+}
+
 function buildCatalogMessage(config, key, title) {
-  const items = config[key];
+  const target = resolveCatalogTarget(config, key, title);
+  const items = target.items;
 
   if (!items.length) {
-    return `${title}: nada cadastrado no momento.`;
+    return `${target.title}: nada cadastrado no momento.`;
   }
 
   const blocks = items.map((item, index) => {
     const lines = [
       `${index + 1}. ${item.name || "Item sem nome"}`,
+      item.offer ? `Oferta: ${item.offer}` : "",
       item.price ? `Preco: ${item.price}` : "",
-      item.description ? `${item.description}` : "",
+      item.description || "",
       item.link ? `Link: ${item.link}` : "",
       buildSeparator()
     ];
@@ -120,30 +151,32 @@ function buildCatalogMessage(config, key, title) {
     return joinBlocks(lines);
   });
 
-  return `${title}:\n\n${blocks.join("\n\n")}`;
+  return `${target.title}:\n\n${blocks.join("\n\n")}`;
 }
 
 function buildCatalogListMessage(config, key, title, singularLabel) {
-  const items = config[key];
+  const target = resolveCatalogTarget(config, key, title, singularLabel);
+  const items = target.items;
 
   if (!items.length) {
-    return `${title}: nada cadastrado no momento.`;
+    return `${target.title}: nada cadastrado no momento.`;
   }
 
   const names = items
     .map((item) => item.name)
     .filter(Boolean)
-    .map((name) => `• ${name}`);
+    .map((name) => `- ${name}`);
 
-  return `Claro 😊\n\nEstes sao os ${title.toLowerCase()} disponiveis:\n\n${names.join("\n")}\n\nDigite o nome do ${singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
+  return `Claro.\n\nEstas sao as opcoes de ${target.title.toLowerCase()}:\n\n${names.join("\n")}\n\nDigite o nome do ${target.singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
 }
 
 function buildCatalogItemMessage(item) {
   const blocks = [
     item?.name || "Item sem nome",
     item?.description || "",
-    item?.price ? `💰 ${item.price}` : "",
-    item?.link ? `👉 Saiba mais:\n${item.link}` : "",
+    item?.offer ? `Oferta: ${item.offer}` : "",
+    item?.price ? `Preco: ${item.price}` : "",
+    item?.link ? `Saiba mais:\n${item.link}` : "",
     "Se quiser, posso te encaminhar para atendimento."
   ];
 
@@ -154,9 +187,9 @@ function buildCatalogMatchesMessage(items, title, singularLabel) {
   const names = items
     .map((item) => item.name)
     .filter(Boolean)
-    .map((name) => `• ${name}`);
+    .map((name) => `- ${name}`);
 
-  return `Encontrei mais de um ${singularLabel.toLowerCase()} parecido.\n\n${names.join("\n")}\n\nDigite o nome do ${singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
+  return `Encontrei mais de um ${singularLabel.toLowerCase()} em ${title.toLowerCase()}.\n\n${names.join("\n")}\n\nDigite o nome do ${singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
 }
 
 function buildCatalogChoiceHelpMessage(config, key, title, singularLabel) {
@@ -171,9 +204,9 @@ function buildLinksMessage(config) {
   const items = config.links
     .map((link) => link.title)
     .filter(Boolean)
-    .map((title) => `• ${title}`);
+    .map((title) => `- ${title}`);
 
-  return `Claro 😊\n\nEstes sao os links disponiveis:\n\n${items.join("\n")}\n\nDigite o nome do link que voce quer receber.`;
+  return `Claro.\n\nEstes sao os links disponiveis:\n\n${items.join("\n")}\n\nDigite o nome do link que voce quer receber.`;
 }
 
 function buildSpecificLinkMessage(config, link) {
@@ -184,7 +217,7 @@ function buildLinkMatchesMessage(links) {
   const items = links
     .map((link) => link.title)
     .filter(Boolean)
-    .map((title) => `• ${title}`);
+    .map((title) => `- ${title}`);
 
   return `Encontrei mais de um link parecido.\n\n${items.join("\n")}\n\nDigite o nome do link que voce quer receber.`;
 }

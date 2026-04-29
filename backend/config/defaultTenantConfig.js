@@ -20,6 +20,30 @@ const defaultTenantConfig = {
     number: "",
     sessionId: ""
   },
+  categories: [
+    {
+      id: "category_products",
+      name: "Produtos",
+      keywords: ["produtos", "produto", "catalogo", "cardapio"],
+      type: "catalog",
+      enabled: true,
+      order: 0,
+      legacyKey: "products",
+      customReply: "",
+      items: []
+    },
+    {
+      id: "category_services",
+      name: "Servicos",
+      keywords: ["servicos", "servico", "agendamento"],
+      type: "catalog",
+      enabled: true,
+      order: 1,
+      legacyKey: "services",
+      customReply: "",
+      items: []
+    }
+  ],
   products: [],
   services: [],
   partnerships: [],

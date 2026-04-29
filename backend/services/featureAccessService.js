@@ -1,3 +1,4 @@
+const { getCatalogCategories } = require("../utils/catalogCategories");
 const { readPlanSettings } = require("../tenancy/planSettingsStore");
 
 function normalizePlan(value) {
@@ -47,6 +48,12 @@ function getUpgradeMessage(tenant = {}) {
 }
 
 function getCatalogCollections(tenant = {}) {
+  const categories = getCatalogCategories(tenant);
+
+  if (categories.length) {
+    return categories.map((category) => (Array.isArray(category.items) ? category.items : []));
+  }
+
   return [
     Array.isArray(tenant.products) ? tenant.products : [],
     Array.isArray(tenant.services) ? tenant.services : [],
@@ -270,6 +277,7 @@ function validatePlanLimit(tenant = {}, resource = {}) {
 module.exports = {
   canUseFeature,
   countAudioAssets,
+  getCatalogCollections,
   countImages,
   countUsedCategories,
   getPlanLimits,

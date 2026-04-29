@@ -59,7 +59,11 @@ function putTenant(req, res) {
 
   const tenant = saveTenant(req.params.tenantId, payload);
   res.json({
-    message: "Cliente atualizado com sucesso.",
+    message: tenant.warning
+      ? `Cliente atualizado com sucesso. ${tenant.warning}`
+      : "Cliente atualizado com sucesso.",
+    warning: tenant.warning || "",
+    backup: tenant.backup || null,
     data: tenant
   });
 }

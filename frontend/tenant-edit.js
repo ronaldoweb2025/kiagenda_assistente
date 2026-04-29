@@ -6,13 +6,10 @@ const dashboardState = {
   currentSection: "overview",
   sessionPollTimer: null,
   sessionAutoStartAttempted: false,
-  activeCatalogTab: "products",
-  editingProductId: "",
-  editingServiceId: "",
-  editingPartnershipId: "",
-  productKeywordSuggestions: [],
-  serviceKeywordSuggestions: [],
-  partnershipKeywordSuggestions: [],
+  activeCategoryId: "",
+  editingCategoryId: "",
+  editingCategoryItemId: "",
+  catalogKeywordSuggestions: [],
   editingLinkId: "",
   editingMenuId: "",
   editingMessageType: "",
@@ -315,21 +312,95 @@ function formatPriceMonthly(value) {
     : "R$ 0,00";
 }
 
+function slugifyCategoryLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function getCatalogCategories() {
+  const categories = Array.isArray(dashboardState.tenant?.categories) ? dashboardState.tenant.categories : [];
+
+  return [...categories]
+    .filter((category) => String(category?.type || "catalog") === "catalog")
+    .sort((left, right) => Number(left?.order || 0) - Number(right?.order || 0));
+}
+
+function findCategoryById(categoryId) {
+  return getCatalogCategories().find((category) => category.id === categoryId) || null;
+}
+
+function findLegacyCategory(legacyKey) {
+  return getCatalogCategories().find((category) => category.legacyKey === legacyKey) || null;
+}
+
+function ensureTenantCategories() {
+  const existingCategories = Array.isArray(dashboardState.tenant?.categories) ? dashboardState.tenant.categories : [];
+
+  if (existingCategories.length) {
+    return existingCategories;
+  }
+
+  const categories = [
+    {
+      id: "category_products",
+      name: "Produtos",
+      keywords: ["produtos", "produto", "catalogo", "cardapio"],
+      type: "catalog",
+      enabled: true,
+      order: 0,
+      legacyKey: "products",
+      customReply: "",
+      items: Array.isArray(dashboardState.tenant?.products) ? dashboardState.tenant.products : []
+    },
+    {
+      id: "category_services",
+      name: "Servicos",
+      keywords: ["servicos", "servico", "agendamento"],
+      type: "catalog",
+      enabled: true,
+      order: 1,
+      legacyKey: "services",
+      customReply: "",
+      items: Array.isArray(dashboardState.tenant?.services) ? dashboardState.tenant.services : []
+    }
+  ];
+
+  if (Array.isArray(dashboardState.tenant?.partnerships) && dashboardState.tenant.partnerships.length) {
+    categories.push({
+      id: "category_partnerships",
+      name: "Revenda e Parcerias",
+      keywords: ["revenda", "parceria", "parcerias", "representante", "distribuidor"],
+      type: "catalog",
+      enabled: true,
+      order: 2,
+      legacyKey: "partnerships",
+      customReply: "",
+      items: dashboardState.tenant.partnerships
+    });
+  }
+
+  dashboardState.tenant.categories = categories;
+  return categories;
+}
+
+function syncLegacyCatalogCollectionsFromCategories() {
+  ensureTenantCategories();
+  dashboardState.tenant.products = findLegacyCategory("products")?.items || [];
+  dashboardState.tenant.services = findLegacyCategory("services")?.items || [];
+  dashboardState.tenant.partnerships = findLegacyCategory("partnerships")?.items || [];
+}
+
 function countUsedCategories() {
-  return [
-    dashboardState.tenant?.products || [],
-    dashboardState.tenant?.services || [],
-    dashboardState.tenant?.partnerships || []
-  ].filter((items) => Array.isArray(items) && items.length > 0).length;
+  return getCatalogCategories().filter((category) => Array.isArray(category.items) && category.items.length > 0).length;
 }
 
 function countUsedImages() {
-  return [
-    dashboardState.tenant?.products || [],
-    dashboardState.tenant?.services || [],
-    dashboardState.tenant?.partnerships || []
-  ].reduce((total, items) => {
-    return total + items.reduce((innerTotal, item) => {
+  return getCatalogCategories().reduce((total, category) => {
+    return total + (category.items || []).reduce((innerTotal, item) => {
       if (Array.isArray(item?.images) && item.images.length) {
         return innerTotal + item.images.filter(Boolean).length;
       }
@@ -1052,10 +1123,11 @@ function getAttendantName() {
 function buildModelMessages(modelId) {
   const businessName = getBusinessName();
   const attendantName = getAttendantName();
-  const hasProducts = dashboardState.tenant.products.length > 0;
-  const hasServices = dashboardState.tenant.services.length > 0;
+  const activeCategories = getCatalogCategories().filter((category) => category.enabled !== false && Array.isArray(category.items) && category.items.length > 0);
+  const categoryMenuLines = activeCategories
+    .map((category) => `• ${category.name} (digite: ${(category.keywords || [category.name])[0] || category.name})`)
+    .join("\n");
   const hasLinks = dashboardState.tenant.links.length > 0;
-  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
 
   const templates = {
     standard: {
@@ -1063,16 +1135,14 @@ function buildModelMessages(modelId) {
         `Ol\u00e1! Seja bem-vindo ao ${businessName} \u2615\n\n` +
         "Sou o assistente virtual e estou aqui pra te ajudar \u{1F60A}\n\n" +
         "Voc\u00ea pode:\n\n" +
-        `${dashboardState.tenant.products.length ? "\u2022 Ver nossos produtos (digite: produtos)\n" : ""}` +
-        `${dashboardState.tenant.services.length ? "\u2022 Conhecer nossos servicos (digite: servicos)\n" : ""}` +
+        `${categoryMenuLines ? `${categoryMenuLines}\n` : ""}` +
         `${dashboardState.tenant.links.length ? "\u2022 Acessar nossos links (digite: links)\n" : ""}` +
         "\u2022 Falar com atendimento (digite: atendimento)\n\n" +
         "\u00c9 s\u00f3 escrever o que voc\u00ea precisa \u{1F44D}",
       fallback:
         "N\u00e3o entendi muito bem \u{1F605}\n\n" +
         "Voc\u00ea pode me pedir assim:\n\n" +
-        `${dashboardState.tenant.products.length ? "\u2022 produtos\n" : ""}` +
-        `${dashboardState.tenant.services.length ? "\u2022 servicos\n" : ""}` +
+        `${activeCategories.map((category) => `• ${(category.keywords || [category.name])[0] || category.name}`).join("\n")}${activeCategories.length ? "\n" : ""}` +
         `${dashboardState.tenant.links.length ? "\u2022 links\n" : ""}` +
         "\u2022 atendimento\n\n" +
         "Me diga o que voc\u00ea precisa \u{1F44D}",
@@ -1116,13 +1186,13 @@ function buildModelMessages(modelId) {
   if (modelId === "loja_online" && !hasLinks) {
     templates.loja_online.welcome =
       `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-      "Posso te ajudar a ver produtos e falar com a equipe para fechar seu pedido.";
+      "Posso te ajudar com as categorias do seu menu e falar com a equipe para fechar seu pedido.";
   }
 
   if (modelId === "services_agendamento" && !hasLinks) {
     templates.services_agendamento.welcome =
       `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-      "Posso te mostrar servicos e falar com a equipe para ajudar com seu agendamento.";
+      "Posso te mostrar as categorias cadastradas e falar com a equipe para ajudar com seu agendamento.";
   }
 
   if (modelId === "delivery" && !hasLinks) {
@@ -1135,119 +1205,17 @@ function buildModelMessages(modelId) {
 }
 
 function buildBotOptionPreview(modelId) {
-  const hasProducts = dashboardState.tenant.products.length > 0;
-  const hasServices = dashboardState.tenant.services.length > 0;
+  const categories = getCatalogCategories();
   const hasLinks = dashboardState.tenant.links.length > 0;
-  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
-
-  if (modelId === "loja_online") {
-    return [
-      {
-        label: "Produtos",
-        available: hasProducts,
-        hint: hasProducts ? "Mostra os produtos cadastrados." : "Cadastre produtos para ativar esta opcao."
-      },
-      {
-        label: "Links importantes",
-        available: hasLinks,
-        hint: hasLinks ? "Mostra links de compra e canais importantes." : "Cadastre links para ativar esta opcao."
-      },
-      {
-        label: "Parcerias e revenda",
-        available: hasPartnerships,
-        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
-      },
-      {
-        label: "Falar com atendimento",
-        available: true,
-        hint: "Encaminha o cliente para atendimento."
-      }
-    ];
-  }
-
-  if (modelId === "services_agendamento") {
-    return [
-      {
-        label: "Servicos",
-        available: hasServices,
-        hint: hasServices ? "Mostra os servicos cadastrados." : "Cadastre servicos para ativar esta opcao."
-      },
-      {
-        label: "Links importantes",
-        available: hasLinks,
-        hint: hasLinks ? "Mostra links de agenda e canais importantes." : "Cadastre links para ativar esta opcao."
-      },
-      {
-        label: "Parcerias e revenda",
-        available: hasPartnerships,
-        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
-      },
-      {
-        label: "Falar com atendimento",
-        available: true,
-        hint: "Encaminha o cliente para atendimento."
-      }
-    ];
-  }
-
-  if (modelId === "delivery") {
-    return [
-      {
-        label: "Cardapio / Produtos",
-        available: hasProducts,
-        hint: hasProducts ? "Mostra os itens do cardapio ou produtos cadastrados." : "Cadastre produtos para ativar esta opcao."
-      },
-      {
-        label: "Links de pedido",
-        available: hasLinks,
-        hint: hasLinks ? "Mostra links para pedido e canais importantes." : "Cadastre links para ativar esta opcao."
-      },
-      {
-        label: "Entrega ou retirada",
-        available: true,
-        hint: "Orienta o cliente sobre como receber ou retirar o pedido."
-      },
-      {
-        label: "Parcerias e revenda",
-        available: hasPartnerships,
-        hint: hasPartnerships ? "Mostra as ofertas de parceria e revenda." : "Cadastre ofertas para ativar esta opcao."
-      },
-      {
-        label: "Falar com atendimento",
-        available: true,
-        hint: "Encaminha o cliente para atendimento."
-      }
-    ];
-  }
 
   return [
-    ...(hasProducts ? [{
-      label: "Produtos",
-      available: true,
-      hint: "Mostra os produtos cadastrados."
-    }] : [{
-      label: "Produtos",
-      available: false,
-      hint: "Cadastre produtos para ativar esta opcao."
-    }]),
-    ...(hasServices ? [{
-      label: "Servicos",
-      available: true,
-      hint: "Mostra os servicos cadastrados."
-    }] : [{
-      label: "Servicos",
-      available: false,
-      hint: "Cadastre servicos para ativar esta opcao."
-    }]),
-    ...(hasPartnerships ? [{
-      label: "Parcerias e revenda",
-      available: true,
-      hint: "Mostra as ofertas de parceria e revenda."
-    }] : [{
-      label: "Parcerias e revenda",
-      available: false,
-      hint: "Cadastre ofertas para ativar esta opcao."
-    }]),
+    ...categories.map((category) => ({
+      label: category.name,
+      available: category.enabled !== false && Array.isArray(category.items) && category.items.length > 0,
+      hint: Array.isArray(category.items) && category.items.length
+        ? "Mostra os itens cadastrados nessa categoria."
+        : "Cadastre itens para ativar esta categoria."
+    })),
     ...(hasLinks ? [{
       label: "Links importantes",
       available: true,
@@ -1267,43 +1235,21 @@ function buildBotOptionPreview(modelId) {
 
 function buildAutomaticMenu(modelId) {
   const items = [];
-  const hasProducts = dashboardState.tenant.products.length > 0;
-  const hasServices = dashboardState.tenant.services.length > 0;
-  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
+  const categories = getCatalogCategories()
+    .filter((category) => category.enabled !== false && Array.isArray(category.items) && category.items.length)
+    .sort((left, right) => Number(left.order || 0) - Number(right.order || 0));
   const hasLinks = dashboardState.tenant.links.length > 0;
 
-  if ((modelId === "standard" || modelId === "loja_online" || modelId === "delivery") && hasProducts) {
+  categories.forEach((category) => {
     items.push({
-      id: "menu_produtos",
-      label: modelId === "delivery" ? "Cardapio" : "Produtos",
-      type: "products",
+      id: `menu_${category.id}`,
+      label: category.name,
+      type: "custom",
       enabled: true,
       linkId: "",
-      aliases: modelId === "delivery" ? ["cardapio", "pedido", "produtos"] : ["produtos", "catalogo"]
+      aliases: Array.isArray(category.keywords) ? category.keywords : []
     });
-  }
-
-  if ((modelId === "standard" || modelId === "services_agendamento") && hasServices) {
-    items.push({
-      id: "menu_servicos",
-      label: "Servicos",
-      type: "services",
-      enabled: true,
-      linkId: "",
-      aliases: ["servicos", "atendimento"]
-    });
-  }
-
-  if (hasPartnerships) {
-    items.push({
-      id: "menu_partnerships",
-      label: "Parcerias e revenda",
-      type: "partnerships",
-      enabled: true,
-      linkId: "",
-      aliases: ["parcerias", "parceria", "revenda", "revender", "representante", "distribuidor"]
-    });
-  }
+  });
 
   if (hasLinks) {
     items.push({
@@ -1681,6 +1627,314 @@ function renderCatalogList(container, items, kind) {
   });
 }
 
+function getOrCreateDynamicCategoriesManager() {
+  let manager = document.getElementById("dynamicCategoriesManager");
+
+  if (manager) {
+    return manager;
+  }
+
+  const productsSection = document.querySelector('[data-section="products"] .section-card');
+
+  if (!productsSection) {
+    return null;
+  }
+
+  manager = document.createElement("div");
+  manager.id = "dynamicCategoriesManager";
+  const referenceNode = productsSection.querySelector(".tab-switch");
+  productsSection.insertBefore(manager, referenceNode || null);
+  return manager;
+}
+
+function setActiveCategory(categoryId) {
+  dashboardState.activeCategoryId = categoryId;
+  dashboardState.editingCategoryItemId = "";
+}
+
+function getActiveCategory() {
+  const categories = getCatalogCategories();
+
+  if (!categories.length) {
+    return null;
+  }
+
+  if (!dashboardState.activeCategoryId || !findCategoryById(dashboardState.activeCategoryId)) {
+    dashboardState.activeCategoryId = categories[0].id;
+  }
+
+  return findCategoryById(dashboardState.activeCategoryId);
+}
+
+function createCategory() {
+  const currentPlan = getCurrentPlanSettings();
+  const categories = getCatalogCategories();
+
+  if (categories.length >= currentPlan.maxCategories) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  const nextCategory = {
+    id: `category_${Date.now()}`,
+    name: `Nova categoria ${categories.length + 1}`,
+    keywords: [],
+    type: "catalog",
+    enabled: true,
+    order: categories.length,
+    legacyKey: "",
+    customReply: "",
+    items: []
+  };
+
+  dashboardState.tenant.categories.push(nextCategory);
+  setActiveCategory(nextCategory.id);
+  renderCatalog();
+}
+
+function updateActiveCategoryFromForm() {
+  const category = getActiveCategory();
+
+  if (!category) {
+    return;
+  }
+
+  const nameInput = document.getElementById("dynamicCategoryName");
+  const keywordsInput = document.getElementById("dynamicCategoryKeywords");
+  const enabledInput = document.getElementById("dynamicCategoryEnabled");
+
+  category.name = nameInput?.value.trim() || category.name;
+  category.keywords = KiagendaApp.parseAliases(keywordsInput?.value || "");
+  category.enabled = Boolean(enabledInput?.checked);
+
+  renderCatalog();
+}
+
+function removeActiveCategory() {
+  const category = getActiveCategory();
+
+  if (!category) {
+    return;
+  }
+
+  dashboardState.tenant.categories = dashboardState.tenant.categories.filter((entry) => entry.id !== category.id);
+  dashboardState.activeCategoryId = getCatalogCategories()[0]?.id || "";
+  dashboardState.editingCategoryItemId = "";
+  syncLegacyCatalogCollectionsFromCategories();
+  renderCatalog();
+}
+
+function startCategoryItemEdit(itemId) {
+  dashboardState.editingCategoryItemId = itemId;
+  renderCatalog();
+}
+
+function removeCategoryItem(itemId) {
+  const category = getActiveCategory();
+
+  if (!category) {
+    return;
+  }
+
+  category.items = (category.items || []).filter((item) => item.id !== itemId);
+  dashboardState.editingCategoryItemId = "";
+  syncLegacyCatalogCollectionsFromCategories();
+  renderAll();
+}
+
+async function upsertActiveCategoryItem() {
+  const category = getActiveCategory();
+
+  if (!category) {
+    throw new Error("Selecione uma categoria.");
+  }
+
+  const currentPlan = getCurrentPlanSettings();
+  const existingItems = Array.isArray(category.items) ? category.items : [];
+  const existingItem = existingItems.find((item) => item.id === dashboardState.editingCategoryItemId) || null;
+
+  if (!existingItem && existingItems.length >= currentPlan.maxItemsPerCategory) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  let images = Array.isArray(existingItem?.images) ? existingItem.images : [];
+  let image = existingItem?.image || null;
+  let imageUrls = Array.isArray(existingItem?.imageUrls) ? existingItem.imageUrls : [];
+  const imageInput = document.getElementById("dynamicCategoryItemImages");
+
+  if (canUseFeatureInPanel("images") && imageInput?.files?.length) {
+    images = await readMediaFileList(imageInput.files, "image/", 3);
+    image = images[0] || null;
+    imageUrls = images.map((asset) => asset.dataUrl).filter(Boolean);
+    const currentItemImages = Array.isArray(existingItem?.images) ? existingItem.images.filter(Boolean).length : existingItem?.image ? 1 : 0;
+    ensureImageLimit(countUsedImages() - currentItemImages + images.length, images);
+  }
+
+  const nextItem = {
+    id: dashboardState.editingCategoryItemId || `category_item_${Date.now()}`,
+    name: document.getElementById("dynamicCategoryItemName")?.value.trim() || "",
+    offer: document.getElementById("dynamicCategoryItemOffer")?.value.trim() || "",
+    price: document.getElementById("dynamicCategoryItemPrice")?.value.trim() || "",
+    description: document.getElementById("dynamicCategoryItemDescription")?.value.trim() || "",
+    link: document.getElementById("dynamicCategoryItemLink")?.value.trim() || "",
+    aliases: existingItem?.aliases || [],
+    keywords: KiagendaApp.parseAliases(document.getElementById("dynamicCategoryItemKeywords")?.value || ""),
+    imageUrls,
+    images,
+    image,
+    audio: null
+  };
+
+  if (!nextItem.name) {
+    throw new Error("Informe o nome do item.");
+  }
+
+  const existingIndex = existingItems.findIndex((item) => item.id === nextItem.id);
+
+  if (existingIndex >= 0) {
+    existingItems[existingIndex] = nextItem;
+  } else {
+    existingItems.push(nextItem);
+  }
+
+  category.items = existingItems;
+  dashboardState.editingCategoryItemId = "";
+  syncLegacyCatalogCollectionsFromCategories();
+  renderAll();
+}
+
+function getEditingCategoryItem() {
+  const category = getActiveCategory();
+  return (category?.items || []).find((item) => item.id === dashboardState.editingCategoryItemId) || null;
+}
+
+function renderDynamicCategoriesManager() {
+  ensureTenantCategories();
+  const manager = getOrCreateDynamicCategoriesManager();
+
+  if (!manager) {
+    return;
+  }
+
+  document.querySelectorAll('.dashboard-nav-button[data-target="products"]').forEach((button) => {
+    button.textContent = "Menu do Atendimento";
+  });
+  const productsSection = document.querySelector('[data-section="products"]');
+  productsSection?.querySelector(".eyebrow")?.replaceChildren(document.createTextNode("Menu do Atendimento"));
+  const productsTitle = productsSection?.querySelector("h3");
+  if (productsTitle) {
+    productsTitle.textContent = "Organize as categorias e ofertas do seu atendimento";
+  }
+  const productsCopy = productsSection?.querySelector(".muted-copy");
+  if (productsCopy) {
+    productsCopy.textContent = "Crie categorias dinamicas, ajuste palavras-chave e cadastre os itens que o bot deve apresentar automaticamente.";
+  }
+  const overviewCatalogLabel = dashboardElements.overviewCatalogCount?.parentElement?.querySelector("span");
+  if (overviewCatalogLabel) {
+    overviewCatalogLabel.textContent = "Menu do Atendimento";
+  }
+
+  const categories = getCatalogCategories();
+  const activeCategory = getActiveCategory();
+  const editingItem = getEditingCategoryItem();
+  const currentPlan = getCurrentPlanSettings();
+  const showMediaFields = canUseFeatureInPanel("images");
+  const hiddenLegacyPanel = document.querySelector('[data-section="products"] .tab-switch');
+  const oldPanels = document.querySelectorAll('[data-section="products"] .catalog-panel');
+
+  if (hiddenLegacyPanel) {
+    hiddenLegacyPanel.classList.add("hidden-view");
+  }
+
+  oldPanels.forEach((panel) => panel.classList.add("hidden-view"));
+
+  manager.innerHTML = `
+    <div class="section-subcard">
+      <div class="section-subcard-header">
+        <div>
+          <h4>Menu do Atendimento</h4>
+          <p class="muted-copy">Categorias editaveis, palavras-chave e itens/ofertas do bot.</p>
+        </div>
+        <button id="dynamicAddCategoryButton" class="secondary-button" type="button">Criar categoria</button>
+      </div>
+      <div class="mini-badge-row">
+        ${categories.map((category) => `<button class="tab-switch-button ${activeCategory?.id === category.id ? "active" : ""}" type="button" data-dynamic-category-tab="${category.id}">${KiagendaApp.escapeHtml(category.name)}</button>`).join("")}
+      </div>
+    </div>
+    ${activeCategory ? `
+      <div class="section-subcard">
+        <h4>Configuracoes da categoria</h4>
+        <p class="field-help">Itens usados: ${(activeCategory.items || []).length} de ${currentPlan.maxItemsPerCategory}. Categorias criadas: ${categories.length} de ${currentPlan.maxCategories}.</p>
+        <div class="field-grid">
+          <label>Nome<input id="dynamicCategoryName" type="text" value="${KiagendaApp.escapeHtml(activeCategory.name || "")}"></label>
+          <label>Palavras-chave<input id="dynamicCategoryKeywords" type="text" value="${KiagendaApp.escapeHtml((activeCategory.keywords || []).join(", "))}" placeholder="Ex.: revenda, parceria, distribuidor"></label>
+          <label class="toggle-field"><span>Categoria ativa</span><input id="dynamicCategoryEnabled" type="checkbox" ${activeCategory.enabled !== false ? "checked" : ""}></label>
+        </div>
+        <div class="button-row">
+          <button id="dynamicSaveCategoryButton" class="primary-button" type="button">Salvar categoria</button>
+          <button id="dynamicRemoveCategoryButton" class="danger-button" type="button">Remover categoria</button>
+        </div>
+      </div>
+      <div class="section-subcard">
+        <h4>${editingItem ? "Editar item" : "Adicionar item"}</h4>
+        <div class="field-grid">
+          <label>Nome<input id="dynamicCategoryItemName" type="text" value="${KiagendaApp.escapeHtml(editingItem?.name || "")}"></label>
+          <label>Oferta<input id="dynamicCategoryItemOffer" type="text" value="${KiagendaApp.escapeHtml(editingItem?.offer || "")}" placeholder="Ex.: Condicao especial"></label>
+          <label>Preco<input id="dynamicCategoryItemPrice" type="text" value="${KiagendaApp.escapeHtml(editingItem?.price || "")}" placeholder="Ex.: R$ 120,00"></label>
+          <label class="full-width">Descricao<textarea id="dynamicCategoryItemDescription">${KiagendaApp.escapeHtml(editingItem?.description || "")}</textarea></label>
+          <label class="full-width">Link<input id="dynamicCategoryItemLink" type="text" value="${KiagendaApp.escapeHtml(editingItem?.link || "")}" placeholder="https://"></label>
+          <label class="full-width">Palavras-chave<input id="dynamicCategoryItemKeywords" type="text" value="${KiagendaApp.escapeHtml((editingItem?.keywords || []).join(", "))}" placeholder="Ex.: revenda, parceria, distribuidor"></label>
+          ${showMediaFields ? `<label class="full-width">Imagens do item<input id="dynamicCategoryItemImages" type="file" accept="image/*" multiple><span class="field-help">${editingItem?.imageUrls?.length ? `${editingItem.imageUrls.length} imagem(ns) atual(is).` : "Opcional. Envie ate 3 imagens."}</span></label>` : ""}
+        </div>
+        <div class="button-row">
+          <button id="dynamicSaveCategoryItemButton" class="primary-button" type="button">${editingItem ? "Salvar item" : "Adicionar item"}</button>
+          ${editingItem ? '<button id="dynamicCancelCategoryItemEditButton" class="neutral-button" type="button">Cancelar edicao</button>' : ""}
+        </div>
+      </div>
+      <div class="section-subcard">
+        <h4>Itens da categoria</h4>
+        <ul class="item-list">
+          ${(activeCategory.items || []).length ? (activeCategory.items || []).map((item) => `
+            <li class="item-card">
+              <div>
+                <h4>${KiagendaApp.escapeHtml(item.name || "Sem nome")}</h4>
+                <p>${KiagendaApp.escapeHtml(item.offer || item.price || "")}</p>
+                <p>${KiagendaApp.escapeHtml(item.description || "")}</p>
+                <p>${KiagendaApp.escapeHtml(item.link || "")}</p>
+              </div>
+              <div class="item-actions">
+                <button class="neutral-button" type="button" data-dynamic-edit-item="${item.id}">Editar</button>
+                <button class="danger-button" type="button" data-dynamic-remove-item="${item.id}">Remover</button>
+              </div>
+            </li>
+          `).join("") : '<li class="item-card"><p>Nenhum item cadastrado ainda.</p></li>'}
+        </ul>
+      </div>
+    ` : '<div class="section-subcard"><p class="muted-copy">Crie a primeira categoria para montar o menu do atendimento.</p></div>'}
+  `;
+
+  document.querySelectorAll("[data-dynamic-category-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveCategory(button.dataset.dynamicCategoryTab);
+      renderCatalog();
+    });
+  });
+
+  document.getElementById("dynamicAddCategoryButton")?.addEventListener("click", () => runAction(createCategory));
+  document.getElementById("dynamicSaveCategoryButton")?.addEventListener("click", () => runAction(updateActiveCategoryFromForm));
+  document.getElementById("dynamicRemoveCategoryButton")?.addEventListener("click", () => runAction(removeActiveCategory));
+  document.getElementById("dynamicSaveCategoryItemButton")?.addEventListener("click", () => runAction(upsertActiveCategoryItem));
+  document.getElementById("dynamicCancelCategoryItemEditButton")?.addEventListener("click", () => {
+    dashboardState.editingCategoryItemId = "";
+    renderCatalog();
+  });
+  document.querySelectorAll("[data-dynamic-edit-item]").forEach((button) => {
+    button.addEventListener("click", () => startCategoryItemEdit(button.dataset.dynamicEditItem));
+  });
+  document.querySelectorAll("[data-dynamic-remove-item]").forEach((button) => {
+    button.addEventListener("click", () => removeCategoryItem(button.dataset.dynamicRemoveItem));
+  });
+}
+
 function renderLinksList() {
   dashboardElements.linksList.innerHTML = "";
 
@@ -1772,10 +2026,7 @@ function renderMenuList() {
 function renderOverview() {
   const sessionLabel = getWhatsappStatusLabel(dashboardState.session);
   const sessionTone = getWhatsappStatusTone(dashboardState.session);
-  const totalCatalog =
-    dashboardState.tenant.products.length +
-    dashboardState.tenant.services.length +
-    (dashboardState.tenant.partnerships || []).length;
+  const totalCatalog = getCatalogCategories().reduce((total, category) => total + (category.items || []).length, 0);
   const botActive = getBotEnabled();
   const usage = getUsageSummary();
 
@@ -1897,6 +2148,8 @@ function renderPlans() {
 }
 
 function renderCatalog() {
+  ensureTenantCategories();
+  syncLegacyCatalogCollectionsFromCategories();
   const shouldShowMediaFields = canUseFeatureInPanel("images");
   const usage = getUsageSummary();
   const currentPlan = getCurrentPlanSettings();
@@ -1917,7 +2170,7 @@ function renderCatalog() {
   renderCatalogList(dashboardElements.productsList, dashboardState.tenant.products, "products");
   renderCatalogList(dashboardElements.servicesList, dashboardState.tenant.services, "services");
   renderCatalogList(dashboardElements.partnershipsList, dashboardState.tenant.partnerships || [], "partnerships");
-  setCatalogTab(dashboardState.activeCatalogTab);
+  renderDynamicCategoriesManager();
 }
 
 function renderLinks() {
@@ -2331,6 +2584,7 @@ function syncFormToState() {
 
 function buildPayload() {
   syncFormToState();
+  syncLegacyCatalogCollectionsFromCategories();
 
   return {
     active: dashboardState.tenant.active,
@@ -2346,6 +2600,7 @@ function buildPayload() {
       number: getConnectedWhatsappNumber(),
       sessionId: dashboardState.tenant.whatsapp.sessionId
     },
+    categories: dashboardState.tenant.categories || [],
     products: dashboardState.tenant.products,
     services: dashboardState.tenant.services,
     partnerships: dashboardState.tenant.partnerships || [],
@@ -2605,6 +2860,7 @@ async function loadDashboard() {
   dashboardState.tenant = tenant;
   dashboardState.tenant.botModel = normalizePanelBotModel(tenant.botModel);
   dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
+  dashboardState.tenant.categories = Array.isArray(tenant.categories) ? tenant.categories : [];
   dashboardState.tenant.partnerships = Array.isArray(tenant.partnerships) ? tenant.partnerships : [];
   dashboardState.tenant.botEnabled = tenant.botEnabled !== false;
   dashboardState.tenant.aiEnabled = tenant.aiEnabled !== false;
@@ -2629,6 +2885,10 @@ async function loadDashboard() {
     sessionId: tenant.whatsapp?.sessionId || `${dashboardState.tenantId}-session`,
     qr: ""
   };
+
+  ensureTenantCategories();
+  syncLegacyCatalogCollectionsFromCategories();
+  dashboardState.activeCategoryId = getCatalogCategories()[0]?.id || "";
 
   resetProductForm();
   resetServiceForm();

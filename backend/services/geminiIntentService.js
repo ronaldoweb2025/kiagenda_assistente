@@ -1,3 +1,5 @@
+const { getActiveCatalogCategoriesWithItems } = require("../utils/catalogCategories");
+
 const ALLOWED_INTENTS = [
   "saudacao",
   "produtos",
@@ -38,40 +40,24 @@ function buildFallbackResult() {
 }
 
 function buildCatalogContext(tenantConfig = {}) {
-  const products = Array.isArray(tenantConfig?.products)
-    ? tenantConfig.products
+  const categories = getActiveCatalogCategoriesWithItems(tenantConfig).map((category) => ({
+    name: category.name,
+    keywords: category.keywords || [],
+    items: (category.items || [])
       .map((item) => ({
         name: item?.name || "",
         keywords: [...(item?.keywords || []), ...(item?.aliases || [])].filter(Boolean)
       }))
       .filter((item) => item.name)
-    : [];
-  const services = Array.isArray(tenantConfig?.services)
-    ? tenantConfig.services
-      .map((item) => ({
-        name: item?.name || "",
-        keywords: [...(item?.keywords || []), ...(item?.aliases || [])].filter(Boolean)
-      }))
-      .filter((item) => item.name)
-    : [];
+  }));
   const links = Array.isArray(tenantConfig?.links)
     ? tenantConfig.links.map((item) => item?.title).filter(Boolean)
-    : [];
-  const partnerships = Array.isArray(tenantConfig?.partnerships)
-    ? tenantConfig.partnerships
-      .map((item) => ({
-        name: item?.name || "",
-        keywords: [...(item?.keywords || []), ...(item?.aliases || [])].filter(Boolean)
-      }))
-      .filter((item) => item.name)
     : [];
 
   return {
     businessName: String(tenantConfig?.business?.name || "").trim(),
     businessType: String(tenantConfig?.business?.type || "").trim(),
-    products,
-    services,
-    partnerships,
+    categories,
     links
   };
 }
@@ -150,9 +136,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
                     `Mensagem do cliente: "${trimmedMessage}"\n` +
                     `Negocio: ${context.businessName || "Nao informado"}\n` +
                     `Tipo de negocio: ${context.businessType || "Nao informado"}\n` +
-                    `Produtos cadastrados: ${formatCatalogItems(context.products)}\n` +
-                    `Servicos cadastrados: ${formatCatalogItems(context.services)}\n` +
-                    `Parcerias cadastradas: ${formatCatalogItems(context.partnerships)}\n` +
+                    `Categorias cadastradas: ${context.categories.map((category) => `${category.name}: ${formatCatalogItems(category.items)}`).join(" | ") || "Nenhuma"}\n` +
                     `Links cadastrados: ${context.links.join(", ") || "Nenhum"}\n`
                 }
               ]

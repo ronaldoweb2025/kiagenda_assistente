@@ -24,6 +24,12 @@ const { detectIntentWithGemini } = require("../services/geminiIntentService");
 const { canUseFeature, normalizePlan, normalizeSubscriptionStatus } = require("../services/featureAccessService");
 const { getState, setState } = require("./stateManager");
 const { updateTenant } = require("../tenancy/tenantConfigStore");
+const {
+  findCategoryById,
+  findLegacyCategory,
+  getActiveCatalogCategoriesWithItems,
+  isServiceCategory
+} = require("../utils/catalogCategories");
 
 function isHandoffActive(state) {
   return state.handoffUntil && state.handoffUntil > Date.now();
@@ -103,11 +109,13 @@ function buildServiceConfirmationRetryMessage() {
 }
 
 function buildServiceConfirmationDeclinedMessage(config) {
-  if (Array.isArray(config?.services) && config.services.length) {
-    return `Sem problema ðŸ˜Š\n\n${buildCatalogListMessage(config, "services", "Servicos", "servico")}`;
+  const serviceCategory = findLegacyCategory(config, "services");
+
+  if (serviceCategory && Array.isArray(serviceCategory.items) && serviceCategory.items.length) {
+    return `Sem problema.\n\n${buildCatalogListMessage(config, serviceCategory.id, serviceCategory.name, "servico")}`;
   }
 
-  return "Sem problema ðŸ˜Š Me diga melhor o que voce procura.";
+  return "Sem problema. Me diga melhor o que voce procura.";
 }
 
 function buildConversationStatePatch(overrides = {}) {
@@ -275,8 +283,23 @@ function learnKeywordFromConfirmation({ tenantId, config, serviceId, rawMessage 
       : item
   );
 
-  updateTenant(tenantId, { services: nextServices });
+  const serviceCategory = findLegacyCategory(config, "services");
+  const nextCategories = Array.isArray(config.categories)
+    ? config.categories.map((category) => {
+        if (category.id !== serviceCategory?.id) {
+          return category;
+        }
+
+        return {
+          ...category,
+          items: nextServices
+        };
+      })
+    : [];
+
+  updateTenant(tenantId, { services: nextServices, categories: nextCategories });
   config.services = nextServices;
+  config.categories = nextCategories;
 
   return learnedKeyword;
 }
@@ -424,7 +447,7 @@ function parseCustomerProfile(message) {
   return null;
 }
 
-function getCatalogContext(state) {
+function getCatalogContext(state, config) {
   if (state.currentState === "aguardando_escolha_link") {
     return {
       key: "links",
@@ -433,27 +456,19 @@ function getCatalogContext(state) {
     };
   }
 
-  if (state.currentState === "aguardando_escolha_produto") {
-    return {
-      key: "products",
-      title: "Produtos",
-      singularLabel: "produto"
-    };
-  }
+  if (String(state.currentState || "").startsWith("aguardando_escolha_categoria:")) {
+    const categoryId = String(state.currentState).split(":")[1] || "";
+    const category = findCategoryById(config, categoryId);
 
-  if (state.currentState === "aguardando_escolha_servico") {
-    return {
-      key: "services",
-      title: "Servicos",
-      singularLabel: "servico"
-    };
-  }
+    if (!category) {
+      return null;
+    }
 
-  if (state.currentState === "aguardando_escolha_parceria") {
     return {
-      key: "partnerships",
-      title: "Parcerias e revenda",
-      singularLabel: "oferta"
+      key: category.id,
+      title: category.name,
+      singularLabel: isServiceCategory(category) ? "servico" : "item",
+      category
     };
   }
 
@@ -484,9 +499,12 @@ function findSpecificItemCandidate(target, config) {
   }
 
   const groups = [
-    { key: "products", items: config.products || [], labelKey: "name" },
-    { key: "services", items: config.services || [], labelKey: "name" },
-    { key: "partnerships", items: config.partnerships || [], labelKey: "name" },
+    ...getActiveCatalogCategoriesWithItems(config).map((category) => ({
+      key: category.id,
+      items: category.items || [],
+      labelKey: "name",
+      category
+    })),
     { key: "links", items: config.links || [], labelKey: "title" }
   ];
 
@@ -514,6 +532,7 @@ function findSpecificItemCandidate(target, config) {
         if (!bestMatch || score > bestMatch.score) {
           bestMatch = {
             type: group.key,
+            categoryId: group.category?.id || "",
             item,
             score
           };
@@ -568,7 +587,7 @@ function buildHandoffAudioMessages(config) {
 }
 
 function tryResolveCatalogChoice({ state, message, config }) {
-  const catalogContext = getCatalogContext(state);
+  const catalogContext = getCatalogContext(state, config);
 
   if (!catalogContext) {
     return null;
@@ -616,28 +635,24 @@ function tryResolveCatalogChoice({ state, message, config }) {
     };
   }
 
-  const items = config[catalogContext.key] || [];
+  const items = catalogContext.category?.items || config[catalogContext.key] || [];
   const matches = findCatalogMatches(message, items);
 
   if (matches.length === 1) {
     const mediaMessages = buildDetailMediaMessages(matches[0], config);
-    const isProduct = catalogContext.key === "products";
-    const isService = catalogContext.key === "services";
+    const isService = isServiceCategory(catalogContext.category);
 
     return {
-      intent: isProduct ? "detalhe_produto" : isService ? "detalhe_servico" : "detalhe_parceria",
-      reply:
-        isProduct
-          ? buildCatalogItemMessage(matches[0])
-          : isService
-            ? buildServiceSalesPrompt(config, matches[0])
-            : buildCatalogItemMessage(matches[0]),
+      intent: "detalhe_categoria_item",
+      categoryId: catalogContext.category?.id || "",
+      itemId: matches[0]?.id || "",
+      reply: isService ? buildServiceSalesPrompt(config, matches[0]) : buildCatalogItemMessage(matches[0]),
       mediaMessages,
       nextState: {
         currentState: "menu",
         fallbackCount: 0,
         handoffUntil: null,
-        lastBotMessageType: isProduct ? "product_detail" : isService ? "service_detail" : "partnership_detail",
+        lastBotMessageType: isService ? "service_detail" : "catalog_detail",
         conversationState:
           !isService
             ? state.conversationState
@@ -654,50 +669,42 @@ function tryResolveCatalogChoice({ state, message, config }) {
   }
 
   if (matches.length > 1) {
-    const isProduct = catalogContext.key === "products";
-    const isService = catalogContext.key === "services";
     return {
-      intent: isProduct ? "opcoes_produto" : isService ? "opcoes_servico" : "opcoes_parceria",
+      intent: "opcoes_categoria",
       reply: buildCatalogMatchesMessage(matches, catalogContext.title, catalogContext.singularLabel),
       nextState: {
         currentState: state.currentState,
         fallbackCount: state.fallbackCount,
         handoffUntil: null,
-        lastBotMessageType: isProduct ? "product_options" : isService ? "service_options" : "partnership_options"
+        lastBotMessageType: isServiceCategory(catalogContext.category) ? "service_options" : "catalog_options"
       }
     };
   }
 
   return {
-    intent:
-      catalogContext.key === "products"
-        ? "escolha_produto_nao_encontrada"
-        : catalogContext.key === "services"
-          ? "escolha_servico_nao_encontrada"
-          : "escolha_parceria_nao_encontrada",
+    intent: "escolha_categoria_nao_encontrada",
     reply: buildCatalogChoiceHelpMessage(config, catalogContext.key, catalogContext.title, catalogContext.singularLabel),
     nextState: {
       currentState: state.currentState,
       fallbackCount: state.fallbackCount + 1,
       handoffUntil: null,
-      lastBotMessageType:
-        catalogContext.key === "products"
-          ? "product_list"
-          : catalogContext.key === "services"
-            ? "service_list"
-            : "partnership_list"
+      lastBotMessageType: isServiceCategory(catalogContext.category) ? "service_list" : "catalog_list"
     }
   };
 }
 
 function mapAIIntentToFlowIntent(aiIntent, config) {
+  const productCategory = findLegacyCategory(config, "products");
+  const serviceCategory = findLegacyCategory(config, "services");
+  const partnershipCategory = findLegacyCategory(config, "partnerships");
+
   switch (aiIntent) {
     case "produtos":
-      return { intent: "ver_produtos", source: "ai" };
+      return productCategory ? { intent: "ver_categoria", categoryId: productCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "servicos":
-      return { intent: "ver_servicos", source: "ai" };
+      return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "parcerias":
-      return { intent: "ver_parcerias", source: "ai" };
+      return partnershipCategory ? { intent: "ver_categoria", categoryId: partnershipCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "links":
       return { intent: "menu", menuAction: "links", source: "ai" };
     case "atendimento":
@@ -705,20 +712,20 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
     case "entrega":
       return { intent: "entrega_retirada", source: "ai" };
     case "preco":
-      if (Array.isArray(config.products) && config.products.length && (!Array.isArray(config.services) || !config.services.length)) {
-        return { intent: "ver_produtos", source: "ai" };
+      if (productCategory && productCategory.items.length && (!serviceCategory || !serviceCategory.items.length)) {
+        return { intent: "ver_categoria", categoryId: productCategory.id, source: "ai" };
       }
 
-      if (Array.isArray(config.services) && config.services.length && (!Array.isArray(config.products) || !config.products.length)) {
-        return { intent: "ver_servicos", source: "ai" };
+      if (serviceCategory && serviceCategory.items.length && (!productCategory || !productCategory.items.length)) {
+        return { intent: "ver_categoria", categoryId: serviceCategory.id, source: "ai" };
       }
 
-      if (Array.isArray(config.partnerships) && config.partnerships.length && (!Array.isArray(config.products) || !config.products.length) && (!Array.isArray(config.services) || !config.services.length)) {
-        return { intent: "ver_parcerias", source: "ai" };
+      if (partnershipCategory && partnershipCategory.items.length && (!productCategory || !productCategory.items.length) && (!serviceCategory || !serviceCategory.items.length)) {
+        return { intent: "ver_categoria", categoryId: partnershipCategory.id, source: "ai" };
       }
 
-      if (Array.isArray(config.products) && config.products.length) {
-        return { intent: "ver_produtos", source: "ai" };
+      if (productCategory && productCategory.items.length) {
+        return { intent: "ver_categoria", categoryId: productCategory.id, source: "ai" };
       }
 
       return { intent: "fora_do_escopo", source: "ai" };
@@ -729,15 +736,19 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
 }
 
 function mapGeminiIntentToFlowIntent(aiDecision, config) {
+  const productCategory = findLegacyCategory(config, "products");
+  const serviceCategory = findLegacyCategory(config, "services");
+  const partnershipCategory = findLegacyCategory(config, "partnerships");
+
   switch (aiDecision.intent) {
     case "saudacao":
       return { intent: "saudacao", source: "gemini", aiConfidence: aiDecision.confidence };
     case "produtos":
-      return { intent: "ver_produtos", source: "gemini", aiConfidence: aiDecision.confidence };
+      return productCategory ? { intent: "ver_categoria", categoryId: productCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "servicos":
-      return { intent: "ver_servicos", source: "gemini", aiConfidence: aiDecision.confidence };
+      return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "parcerias":
-      return { intent: "ver_parcerias", source: "gemini", aiConfidence: aiDecision.confidence };
+      return partnershipCategory ? { intent: "ver_categoria", categoryId: partnershipCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "links":
       return { intent: "menu", menuAction: "links", source: "gemini", aiConfidence: aiDecision.confidence };
     case "atendimento":
@@ -757,27 +768,10 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
         return { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
       }
 
-      if (matchedItem.type === "products") {
+      if (matchedItem.type !== "links") {
         return {
-          intent: "detalhe_produto",
-          itemId: matchedItem.item.id,
-          source: "gemini",
-          aiConfidence: aiDecision.confidence
-        };
-      }
-
-      if (matchedItem.type === "services") {
-        return {
-          intent: "detalhe_servico",
-          itemId: matchedItem.item.id,
-          source: "gemini",
-          aiConfidence: aiDecision.confidence
-        };
-      }
-
-      if (matchedItem.type === "partnerships") {
-        return {
-          intent: "detalhe_parceria",
+          intent: "detalhe_categoria_item",
+          categoryId: matchedItem.categoryId,
           itemId: matchedItem.item.id,
           source: "gemini",
           aiConfidence: aiDecision.confidence
@@ -1299,57 +1293,46 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         reply = buildMenuMessage(config);
       }
       break;
-    case "ver_servicos":
-      reply = buildCatalogListMessage(config, "services", "Servicos", "servico");
-      nextState.currentState = config.services.length ? "aguardando_escolha_servico" : "menu";
-      nextState.lastBotMessageType = "service_list";
+    case "ver_categoria": {
+      const category = findCategoryById(config, matchedIntent.categoryId);
+      reply = category
+        ? buildCatalogListMessage(config, category.id, category.name, isServiceCategory(category) ? "servico" : "item")
+        : buildMenuMessage(config);
+      nextState.currentState = category?.items?.length ? `aguardando_escolha_categoria:${category.id}` : "menu";
+      nextState.lastBotMessageType = isServiceCategory(category) ? "service_list" : "catalog_list";
       break;
-    case "ver_parcerias":
-      reply = buildCatalogListMessage(config, "partnerships", "Parcerias e revenda", "oferta");
-      nextState.currentState = config.partnerships.length ? "aguardando_escolha_parceria" : "menu";
-      nextState.lastBotMessageType = "partnership_list";
-      break;
-    case "ver_produtos":
-      reply = buildCatalogListMessage(config, "products", "Produtos", "produto");
-      nextState.currentState = config.products.length ? "aguardando_escolha_produto" : "menu";
-      nextState.lastBotMessageType = "product_list";
-      break;
+    }
     case "ver_link_especifico": {
       const matchedLink = findLinkById(config, matchedIntent.linkId);
       reply = matchedLink ? buildSpecificLinkMessage(config, matchedLink) : buildAllLinksReply(config);
       break;
     }
-    case "detalhe_produto": {
-      const product = (config.products || []).find((item) => item.id === matchedIntent.itemId);
-      reply = product ? buildCatalogItemMessage(product) : buildCatalogListMessage(config, "products", "Produtos", "produto");
+    case "detalhe_categoria_item": {
+      const category = findCategoryById(config, matchedIntent.categoryId);
+      const item = (category?.items || []).find((entry) => entry.id === matchedIntent.itemId);
+      const serviceLike = isServiceCategory(category);
+      reply = item
+        ? serviceLike
+          ? buildServiceSalesPrompt(config, item)
+          : buildCatalogItemMessage(item)
+        : category
+          ? buildCatalogListMessage(config, category.id, category.name, serviceLike ? "servico" : "item")
+          : buildMenuMessage(config);
       nextState.currentState = "menu";
-      nextState.lastBotMessageType = "product_detail";
+      nextState.lastBotMessageType = serviceLike ? "service_detail" : "catalog_detail";
+      if (serviceLike) {
+        nextState.conversationState = {
+          stage: "service_followup",
+          lastSuggestedService: item?.id || "",
+          lastIntent: "servico",
+          rejectedServices: conversationState.rejectedServices
+        };
+      }
       break;
     }
-    case "detalhe_servico": {
-      const service = (config.services || []).find((item) => item.id === matchedIntent.itemId);
-      reply = service ? buildServiceSalesPrompt(config, service) : buildCatalogListMessage(config, "services", "Servicos", "servico");
-      nextState.currentState = "menu";
-      nextState.lastBotMessageType = "service_detail";
-      nextState.conversationState = {
-        stage: "service_followup",
-        lastSuggestedService: service?.id || "",
-        lastIntent: "servico",
-        rejectedServices: conversationState.rejectedServices
-      };
-      break;
-    }
-    case "detalhe_parceria": {
-      const partnership = (config.partnerships || []).find((item) => item.id === matchedIntent.itemId);
-      reply = partnership
-        ? buildCatalogItemMessage(partnership)
-        : buildCatalogListMessage(config, "partnerships", "Parcerias e revenda", "oferta");
-      nextState.currentState = "menu";
-      nextState.lastBotMessageType = "partnership_detail";
-      break;
-    }
-    case "confirmar_servico": {
-      const service = (config.services || []).find((item) => item.id === matchedIntent.itemId);
+    case "confirmar_servico_categoria": {
+      const category = findCategoryById(config, matchedIntent.categoryId);
+      const service = (category?.items || []).find((item) => item.id === matchedIntent.itemId);
       const alreadyRejected = service && conversationState.rejectedServices.includes(service.id);
       reply = service && !alreadyRejected ? buildServiceConfirmationMessage(service) : buildFallbackMessage(config);
       nextState.currentState = service && !alreadyRejected ? "confirmando_servico" : "menu";
@@ -1408,13 +1391,12 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     mediaMessages:
       matchedIntent.intent === "atendimento_humano"
         ? buildHandoffAudioMessages(config)
-        : matchedIntent.intent === "detalhe_produto"
-          ? buildDetailMediaMessages((config.products || []).find((item) => item.id === matchedIntent.itemId), config)
-          : matchedIntent.intent === "detalhe_servico"
-            ? buildDetailMediaMessages((config.services || []).find((item) => item.id === matchedIntent.itemId), config)
-            : matchedIntent.intent === "detalhe_parceria"
-              ? buildDetailMediaMessages((config.partnerships || []).find((item) => item.id === matchedIntent.itemId), config)
-            : [],
+        : matchedIntent.intent === "detalhe_categoria_item"
+          ? buildDetailMediaMessages(
+              (findCategoryById(config, matchedIntent.categoryId)?.items || []).find((item) => item.id === matchedIntent.itemId),
+              config
+            )
+          : [],
     state: savedState
   };
 }

@@ -1,3 +1,8 @@
+const {
+  getActiveCatalogCategoriesWithItems,
+  isServiceCategory
+} = require("../utils/catalogCategories");
+
 function normalizeText(value) {
   return String(value || "")
     .toLowerCase()
@@ -37,6 +42,7 @@ function calculateScore(message, service) {
       normalizedMessageVariant.includes(keywordVariant)
     );
   });
+
   return matches.length / keywords.length;
 }
 
@@ -140,32 +146,55 @@ function findCatalogMatch(text, items) {
   return bestMatch?.item || null;
 }
 
-function findServiceNameMatch(text, services = []) {
-  let bestMatch = null;
+function findCatalogCategoryMatch(text, config) {
+  const categories = getActiveCatalogCategoriesWithItems(config);
 
-  for (const service of services) {
-    const candidate = normalizeText(service?.name);
+  return categories.find((category) => {
+    const candidates = [category.name, ...(category.keywords || [])];
+    return includesAny(text, candidates);
+  }) || null;
+}
 
-    if (!candidate) {
-      continue;
+function findCatalogItemMatch(text, config) {
+  const categories = getActiveCatalogCategoriesWithItems(config);
+
+  for (const category of categories) {
+    if (isServiceCategory(category)) {
+      const bestServiceMatch = matchBestService(text, category.items || []);
+
+      if (bestServiceMatch?.service && bestServiceMatch.score >= 0.6) {
+        return {
+          intent: "detalhe_categoria_item",
+          categoryId: category.id,
+          itemId: bestServiceMatch.service.id,
+          confidenceScore: bestServiceMatch.score,
+          matchSource: "keywords"
+        };
+      }
+
+      if (bestServiceMatch?.service && bestServiceMatch.score >= 0.3) {
+        return {
+          intent: "confirmar_servico_categoria",
+          categoryId: category.id,
+          itemId: bestServiceMatch.service.id,
+          confidenceScore: bestServiceMatch.score,
+          matchSource: "keywords"
+        };
+      }
     }
 
-    const score = scoreCandidateMatch(text, { value: candidate, priority: 1 });
+    const itemMatch = findCatalogMatch(text, category.items || []);
 
-    if (!score) {
-      continue;
-    }
-
-    if (!bestMatch || score > bestMatch.score) {
-      bestMatch = { service, score };
+    if (itemMatch) {
+      return {
+        intent: "detalhe_categoria_item",
+        categoryId: category.id,
+        itemId: itemMatch.id
+      };
     }
   }
 
-  return bestMatch?.service || null;
-}
-
-function findPartnershipMatch(text, partnerships = []) {
-  return findCatalogMatch(text, partnerships);
+  return null;
 }
 
 function resolveMenuIntent(menuItem) {
@@ -173,11 +202,11 @@ function resolveMenuIntent(menuItem) {
     case "business_info":
       return { intent: "menu", menuAction: "business_info" };
     case "products":
-      return { intent: "ver_produtos", menuAction: "products" };
+      return { intent: "menu", menuAction: "menu" };
     case "services":
-      return { intent: "ver_servicos", menuAction: "services" };
+      return { intent: "menu", menuAction: "menu" };
     case "partnerships":
-      return { intent: "ver_parcerias", menuAction: "partnerships" };
+      return { intent: "menu", menuAction: "menu" };
     case "links":
       return { intent: "menu", menuAction: "links" };
     case "specific_link":
@@ -202,10 +231,6 @@ function resolveAdvancedOptionIntent(option) {
   const actionType = String(option?.actionType || "").trim();
 
   switch (actionType) {
-    case "products":
-      return { intent: "ver_produtos", source: "advanced_option", optionId: option.id };
-    case "services":
-      return { intent: "ver_servicos", source: "advanced_option", optionId: option.id };
     case "links":
       return { intent: "menu", menuAction: "links", source: "advanced_option", optionId: option.id };
     case "handoff":
@@ -229,24 +254,12 @@ function matchIntent(message, config) {
     return { intent: "menu" };
   }
 
-  if (includesAny(text, ["oi", "ola", "olá", "bom dia", "boa tarde", "boa noite"])) {
+  if (includesAny(text, ["oi", "ola", "bom dia", "boa tarde", "boa noite"])) {
     return { intent: "saudacao" };
   }
 
-  if (includesAny(text, ["menu", "opcoes", "opções", "inicio", "comecar", "começar"])) {
+  if (includesAny(text, ["menu", "opcoes", "inicio", "comecar"])) {
     return { intent: "menu" };
-  }
-
-  if (includesAny(text, ["servico", "servicos", "serviço", "serviços"])) {
-    return { intent: "ver_servicos" };
-  }
-
-  if (includesAny(text, ["produto", "produtos", "cardapio", "catalogo", "catálogo"])) {
-    return { intent: "ver_produtos" };
-  }
-
-  if (includesAny(text, ["parceria", "parcerias", "revenda", "revender", "representante", "distribuidor"])) {
-    return { intent: "ver_parcerias" };
   }
 
   if (includesAny(text, ["link", "links"])) {
@@ -259,6 +272,12 @@ function matchIntent(message, config) {
 
   if (includesAny(text, ["humano", "atendente", "atendimento", "pessoa", "suporte"])) {
     return { intent: "atendimento_humano" };
+  }
+
+  const categoryMatch = findCatalogCategoryMatch(text, config);
+
+  if (categoryMatch) {
+    return { intent: "ver_categoria", categoryId: categoryMatch.id };
   }
 
   const linkMatch = findLinkMatch(text, config);
@@ -279,42 +298,10 @@ function matchIntent(message, config) {
     return resolveAdvancedOptionIntent(advancedOptionMatch);
   }
 
-  const bestServiceMatch = matchBestService(text, config.services);
+  const categoryItemMatch = findCatalogItemMatch(text, config);
 
-  if (bestServiceMatch?.service && bestServiceMatch.score >= 0.6) {
-    return {
-      intent: "detalhe_servico",
-      itemId: bestServiceMatch.service.id,
-      confidenceScore: bestServiceMatch.score,
-      matchSource: "keywords"
-    };
-  }
-
-  if (bestServiceMatch?.service && bestServiceMatch.score >= 0.3) {
-    return {
-      intent: "confirmar_servico",
-      itemId: bestServiceMatch.service.id,
-      confidenceScore: bestServiceMatch.score,
-      matchSource: "keywords"
-    };
-  }
-
-  const serviceMatch = findServiceNameMatch(text, config.services);
-
-  if (serviceMatch) {
-    return { intent: "detalhe_servico", itemId: serviceMatch.id, matchSource: "name" };
-  }
-
-  const partnershipMatch = findPartnershipMatch(text, config.partnerships);
-
-  if (partnershipMatch) {
-    return { intent: "detalhe_parceria", itemId: partnershipMatch.id };
-  }
-
-  const productMatch = findCatalogMatch(text, config.products);
-
-  if (productMatch) {
-    return { intent: "detalhe_produto", itemId: productMatch.id };
+  if (categoryItemMatch) {
+    return categoryItemMatch;
   }
 
   return { intent: "fora_do_escopo" };

@@ -7,7 +7,11 @@ function getTenantConfig(req, res) {
 function updateTenantConfig(req, res) {
   const tenant = saveTenant(req.params.tenantId, req.body || {});
   res.json({
-    message: "Configuracao do tenant atualizada com sucesso.",
+    message: tenant.warning
+      ? `Configuracao do tenant atualizada com sucesso. ${tenant.warning}`
+      : "Configuracao do tenant atualizada com sucesso.",
+    warning: tenant.warning || "",
+    backup: tenant.backup || null,
     data: tenant
   });
 }

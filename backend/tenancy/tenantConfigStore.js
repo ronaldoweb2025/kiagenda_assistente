@@ -2,7 +2,12 @@ const fs = require("fs");
 const path = require("path");
 const { defaultTenantConfig } = require("../config/defaultTenantConfig");
 const {
+  migrateCategoriesSafely,
+  normalizeCategories
+} = require("../utils/catalogCategories");
+const {
   countAudioAssets,
+  getCatalogCollections,
   countImages,
   countUsedCategories,
   getPlanLimits,
@@ -219,6 +224,10 @@ function mergeMeta(currentMeta = {}, nextMeta = {}) {
 function normalizeTenant(input = {}) {
   const tenantId = assertTenantId(input?.tenantId);
   const plan = normalizePlan(input?.plan);
+  const migratedTenant = migrateCategoriesSafely({
+    ...input,
+    categories: normalizeCategories(input?.categories, input)
+  });
 
   return {
     tenantId,
@@ -249,9 +258,10 @@ function normalizeTenant(input = {}) {
     },
     links: normalizeLinks(input?.links),
     advancedOptions: normalizeAdvancedOptions(input?.advancedOptions),
-    products: normalizeCatalogItems(input?.products, "product"),
-    services: normalizeCatalogItems(input?.services, "service"),
-    partnerships: normalizeCatalogItems(input?.partnerships, "partnership"),
+    categories: migratedTenant.categories,
+    products: normalizeCatalogItems(migratedTenant.products, "product"),
+    services: normalizeCatalogItems(migratedTenant.services, "service"),
+    partnerships: normalizeCatalogItems(migratedTenant.partnerships, "partnership"),
     menu: normalizeMenu(input?.menu),
     messages: {
       welcome: normalizeString(input?.messages?.welcome),
@@ -283,6 +293,13 @@ function normalizeTenant(input = {}) {
         mode: normalizeString(input?.integration?.kiagenda?.mode) || null
       }
     },
+    warning: collectTenantPlanConstraintViolations({
+      ...migratedTenant,
+      plan,
+      subscriptionStatus: normalizeSubscriptionStatus(input?.subscriptionStatus)
+    }).length
+      ? PLAN_DOWNGRADE_WARNING
+      : "",
     meta: buildTenantMeta(input?.meta)
   };
 }
@@ -319,6 +336,7 @@ function mergeTenant(baseTenant, partialTenant) {
     advancedOptions: Array.isArray(partialTenant.advancedOptions)
       ? partialTenant.advancedOptions
       : baseTenant.advancedOptions,
+    categories: Array.isArray(partialTenant.categories) ? partialTenant.categories : baseTenant.categories,
     products: Array.isArray(partialTenant.products) ? partialTenant.products : baseTenant.products,
     services: Array.isArray(partialTenant.services) ? partialTenant.services : baseTenant.services,
     partnerships: Array.isArray(partialTenant.partnerships) ? partialTenant.partnerships : baseTenant.partnerships,
@@ -357,11 +375,7 @@ function collectTenantPlanConstraintViolations(tenant) {
     subscriptionStatus: "active"
   };
   const violations = [];
-  const categoryCollections = [
-    tenant.products || [],
-    tenant.services || [],
-    tenant.partnerships || []
-  ];
+  const categoryCollections = getCatalogCollections(tenant);
   const usedCategories = countUsedCategories(tenant);
   const categoryValidation = validatePlanLimit(tenantForLimitCheck, {
     type: "category",
@@ -386,7 +400,7 @@ function collectTenantPlanConstraintViolations(tenant) {
 
     if (!itemValidation?.allowed) {
       violations.push({
-        resource: ["products", "services", "partnerships"][index],
+        resource: tenant.categories?.[index]?.id || `category_${index + 1}`,
         reason: itemValidation.reason,
         usage: itemCount,
         limit: itemValidation?.limits?.maxItemsPerCategory
@@ -438,11 +452,7 @@ function ensurePlanLimit(validationResult) {
 }
 
 function validateTenantPlanConstraints(tenant) {
-  const categoryCollections = [
-    tenant.products || [],
-    tenant.services || [],
-    tenant.partnerships || []
-  ];
+  const categoryCollections = getCatalogCollections(tenant);
   const usedCategories = countUsedCategories(tenant);
 
   ensurePlanLimit(
@@ -585,9 +595,12 @@ function updateTenant(tenantId, partialTenant) {
   const mergedTenant = mergeTenant(currentTenant, partialTenant || {});
   const currentViolations = collectTenantPlanConstraintViolations(currentTenant);
   const nextViolations = collectTenantPlanConstraintViolations(mergedTenant);
+  const backup = createTenantBackup(tenantId);
 
   if (!currentViolations.length) {
-    return writeTenant(tenantId, mergedTenant);
+    const tenant = writeTenant(tenantId, mergedTenant);
+    tenant.backup = backup;
+    return tenant;
   }
 
   const currentViolationIndex = new Map(
@@ -608,9 +621,11 @@ function updateTenant(tenantId, partialTenant) {
     validateTenantPlanConstraints(mergedTenant);
   }
 
-  return writeTenant(tenantId, mergedTenant, {
+  const tenant = writeTenant(tenantId, mergedTenant, {
     skipPlanValidation: true
   });
+  tenant.backup = backup;
+  return tenant;
 }
 
 function buildBackupFileName(tenantId, timestamp = new Date()) {
@@ -620,6 +635,7 @@ function buildBackupFileName(tenantId, timestamp = new Date()) {
 
 function createTenantBackup(tenantId) {
   const resolvedTenantId = assertTenantId(tenantId);
+  ensureDataDirectories();
   const currentTenant = readTenant(resolvedTenantId);
   const backupFileName = buildBackupFileName(resolvedTenantId);
   const backupFilePath = path.resolve(backupsDirectoryPath, backupFileName);
