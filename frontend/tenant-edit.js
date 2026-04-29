@@ -1138,6 +1138,7 @@ function buildBotOptionPreview(modelId) {
   const hasProducts = dashboardState.tenant.products.length > 0;
   const hasServices = dashboardState.tenant.services.length > 0;
   const hasLinks = dashboardState.tenant.links.length > 0;
+  const hasPartnerships = Array.isArray(dashboardState.tenant.partnerships) && dashboardState.tenant.partnerships.length > 0;
 
   if (modelId === "loja_online") {
     return [
