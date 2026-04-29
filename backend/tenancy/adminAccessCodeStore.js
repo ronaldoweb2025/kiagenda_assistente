@@ -1,5 +1,6 @@
 const path = require("path");
 const { readJsonFile, writeJsonFile } = require("../utils/jsonFileStore");
+const { normalizePlan } = require("../services/featureAccessService");
 
 const adminAccessCodesFilePath = path.resolve(__dirname, "../../data/adminAccessCodes.json");
 
@@ -22,10 +23,6 @@ function writeAdminAccessCodes(codes) {
 
 function normalizeString(value) {
   return String(value || "").trim();
-}
-
-function normalizePlan(value) {
-  return normalizeString(value).toLowerCase() === "professional" ? "professional" : "essential";
 }
 
 function normalizeStatus(value) {

@@ -21,7 +21,7 @@
         <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
         <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento Automático</button>
         <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
-        <button class="dashboard-nav-button" type="button" data-target="products">Produtos e serviços</button>
+        <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
         <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
         <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
         <button class="dashboard-nav-button" type="button" data-target="settings">Configurações do Negócio</button>
@@ -59,7 +59,7 @@
           <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
           <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento automatico</button>
           <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
-          <button class="dashboard-nav-button" type="button" data-target="products">Produtos e servicos</button>
+          <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
           <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
           <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
           <button class="dashboard-nav-button" type="button" data-target="settings">Configuracoes do negocio</button>
@@ -77,7 +77,7 @@
               <strong id="overviewWhatsappStatus">Desconectado</strong>
             </article>
             <article class="stat-card">
-              <span>Produtos e servicos</span>
+              <span>Catálogo e Categorias</span>
               <strong id="overviewCatalogCount">0</strong>
             </article>
             <article class="stat-card">
@@ -105,6 +105,7 @@
               <span id="overviewPlanBadge" class="badge-pill badge-pill-plan">Essencial</span>
             </div>
             <div id="planFeaturesList" class="mini-badge-row"></div>
+            <div id="planUsageList" class="usage-list"></div>
           </div>
         </article>
       </section>
@@ -313,6 +314,7 @@
             <strong id="currentPlanName">Essencial</strong>
             <p id="currentPlanDescription" class="muted-copy">Atendimento por texto com produtos, servicos, links e atendimento humano.</p>
             <p id="currentSubscriptionStatus" class="muted-copy">Assinatura ativa</p>
+            <div id="currentPlanUsageSummary" class="usage-list"></div>
           </div>
 
           <div class="plans-grid">
@@ -320,31 +322,33 @@
               <div class="plan-card-header">
                 <div>
                   <h4>Essencial</h4>
-                  <p class="muted-copy">Ideal para Atendimento simples por texto.</p>
+                  <p id="essentialPlanPrice" class="muted-copy">Ideal para Atendimento simples por texto.</p>
                 </div>
                 <span class="mini-badge">Plano base</span>
               </div>
-              <ul class="feature-list">
-                <li>Texto</li>
-                <li>Produtos e servicos</li>
-                <li>Links</li>
-              </ul>
+              <ul id="essentialPlanFeatures" class="feature-list"></ul>
             </article>
 
             <article class="plan-card is-highlighted" id="professionalPlanCard">
               <div class="plan-card-header">
                 <div>
                   <h4>Profissional</h4>
-                  <p class="muted-copy">Mais recursos para um Atendimento mais completo.</p>
+                  <p id="professionalPlanPrice" class="muted-copy">Mais recursos para um Atendimento mais completo.</p>
                 </div>
                 <span class="mini-badge mini-badge-success">Upgrade</span>
               </div>
-              <ul class="feature-list">
-                <li>Ativar IA do Gemini</li>
-                <li>Limite de Até 3 imagens </li>
-                <li>1 áudio por Atendimento</li>
-                <li>Respostas mais inteligentes</li>
-              </ul>
+              <ul id="professionalPlanFeatures" class="feature-list"></ul>
+            </article>
+
+            <article class="plan-card" id="businessPlanCard">
+              <div class="plan-card-header">
+                <div>
+                  <h4>Business</h4>
+                  <p id="businessPlanPrice" class="muted-copy">Mais espaco para crescer com mais categorias e recursos.</p>
+                </div>
+                <span class="mini-badge">Escala</span>
+              </div>
+              <ul id="businessPlanFeatures" class="feature-list"></ul>
             </article>
           </div>
 
@@ -356,11 +360,11 @@
 
       <section class="panel-section" data-section="products">
         <article class="card section-card">
-          <p class="eyebrow">Produtos e servicos</p>
-          <h3>Organize o que seu negocio oferece</h3>
-          <p class="muted-copy">Cadastre os itens principais. O sistema aproveita essas informacoes para montar o atendimento automatico.</p>
+          <p class="eyebrow">Catalogo e categorias</p>
+          <h3>Organize tudo o que voce oferece</h3>
+          <p class="muted-copy">Cadastre produtos, servicos, parcerias e outras ofertas para o bot apresentar seu negocio com mais clareza.</p>
 
-          <div class="tab-switch" role="tablist" aria-label="Produtos e servicos">
+          <div class="tab-switch" role="tablist" aria-label="Catalogo e categorias">
             <button id="showProductsTabButton" class="tab-switch-button active" type="button">Produtos</button>
             <button id="showServicesTabButton" class="tab-switch-button" type="button">Servicos</button>
             <button id="showPartnershipsTabButton" class="tab-switch-button" type="button">Parcerias e revenda</button>
@@ -369,6 +373,7 @@
           <div id="productsPanel" class="catalog-panel active">
             <div class="section-subcard">
               <h4>Produtos</h4>
+              <p id="productsUsageCounter" class="field-help"></p>
               <div id="productMediaNotice" class="feature-lock-inline hidden-view">
                 <p class="muted-copy">🔒 Disponivel no plano Profissional</p>
                 <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
@@ -403,6 +408,7 @@
           <div id="servicesPanel" class="catalog-panel">
             <div class="section-subcard">
               <h4>Servicos</h4>
+              <p id="servicesUsageCounter" class="field-help"></p>
               <div id="serviceMediaNotice" class="feature-lock-inline hidden-view">
                 <p class="muted-copy">🔒 Disponivel no plano Profissional</p>
                 <button class="secondary-button" type="button" data-upgrade-action>Fazer upgrade</button>
@@ -437,6 +443,7 @@
           <div id="partnershipsPanel" class="catalog-panel">
             <div class="section-subcard">
               <h4>Parcerias e revenda</h4>
+              <p id="partnershipsUsageCounter" class="field-help"></p>
               <div class="field-grid">
                 <label>Nome<input id="partnershipName" type="text" placeholder="Ex.: Revenda para cafeterias"></label>
                 <label>Oferta<input id="partnershipPrice" type="text" placeholder="Ex.: Condicoes especiais para parceiros"></label>

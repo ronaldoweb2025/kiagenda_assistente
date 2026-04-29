@@ -56,7 +56,17 @@ function getTestTenants() {
 }
 
 function getPlanLabel(plan) {
-  return String(plan || "essential") === "professional" ? "Profissional" : "Essencial";
+  const normalizedPlan = String(plan || "essential").trim().toLowerCase();
+
+  if (normalizedPlan === "professional") {
+    return "Profissional";
+  }
+
+  if (normalizedPlan === "business") {
+    return "Business";
+  }
+
+  return "Essencial";
 }
 
 function getTenantStatusLabel(tenant) {

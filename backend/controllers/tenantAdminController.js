@@ -6,6 +6,7 @@ const {
   listTenantSummaries,
   saveTenant
 } = require("../services/tenantService");
+const { readPlanSettings, updatePlanSettings } = require("../tenancy/planSettingsStore");
 
 function getTenants(req, res) {
   res.json({
@@ -25,11 +26,25 @@ function getTenantById(req, res) {
   res.json(getTenant(req.params.tenantId));
 }
 
+function getAdminPlanSettings(req, res) {
+  res.json({
+    data: readPlanSettings()
+  });
+}
+
 function putTenant(req, res) {
   const tenant = saveTenant(req.params.tenantId, req.body || {});
   res.json({
     message: "Cliente atualizado com sucesso.",
     data: tenant
+  });
+}
+
+function putAdminPlanSettings(req, res) {
+  const planSettings = updatePlanSettings(req.body || {});
+  res.json({
+    message: "Planos e limites atualizados com sucesso.",
+    data: planSettings
   });
 }
 
@@ -58,8 +73,10 @@ async function deleteTenant(req, res) {
 
 module.exports = {
   deleteTenant,
+  getAdminPlanSettings,
   getTenantById,
   getTenants,
   postTenant,
+  putAdminPlanSettings,
   putTenant
 };

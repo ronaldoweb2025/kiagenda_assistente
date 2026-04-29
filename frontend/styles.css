@@ -1206,6 +1206,12 @@ textarea {
   margin-top: 10px;
 }
 
+.usage-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
 .mini-badge {
   display: inline-flex;
   align-items: center;

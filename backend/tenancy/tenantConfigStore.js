@@ -1,7 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const { defaultTenantConfig } = require("../config/defaultTenantConfig");
-const { normalizePlan, normalizeSubscriptionStatus } = require("../services/featureAccessService");
+const {
+  normalizePlan,
+  normalizeSubscriptionStatus,
+  validatePlanLimit
+} = require("../services/featureAccessService");
 const { assertTenantId, normalizeString } = require("./tenantResolver");
 const { ensureDirectory, readJsonFile, writeJsonFile } = require("../utils/jsonFileStore");
 
@@ -62,10 +66,16 @@ function normalizeMediaAsset(asset) {
     return null;
   }
 
+  const providedSizeBytes = Number(asset.sizeBytes);
+  const inferredSizeBytes = dataUrl.includes(",")
+    ? Math.floor((dataUrl.split(",")[1].length * 3) / 4)
+    : 0;
+
   return {
     dataUrl,
     mimeType,
-    fileName: fileName || ""
+    fileName: fileName || "",
+    sizeBytes: Number.isFinite(providedSizeBytes) && providedSizeBytes >= 0 ? providedSizeBytes : inferredSizeBytes
   };
 }
 
@@ -326,6 +336,84 @@ function mergeTenant(baseTenant, partialTenant) {
   });
 }
 
+function ensurePlanLimit(validationResult) {
+  if (validationResult?.allowed) {
+    return;
+  }
+
+  const error = new Error(validationResult?.message || "Limite do plano atingido.");
+  error.statusCode = 400;
+  throw error;
+}
+
+function validateTenantPlanConstraints(tenant) {
+  const categoryCollections = [
+    tenant.products || [],
+    tenant.services || [],
+    tenant.partnerships || []
+  ];
+  const usedCategories = categoryCollections.filter((items) => Array.isArray(items) && items.length > 0).length;
+
+  ensurePlanLimit(
+    validatePlanLimit(tenant, {
+      type: "category",
+      nextCount: usedCategories
+    })
+  );
+
+  categoryCollections.forEach((items) => {
+    ensurePlanLimit(
+      validatePlanLimit(tenant, {
+        type: "item",
+        nextCount: Array.isArray(items) ? items.length : 0
+      })
+    );
+  });
+
+  const imageAssets = categoryCollections.flatMap((items) => {
+    return (Array.isArray(items) ? items : []).flatMap((item) => {
+      if (Array.isArray(item?.images) && item.images.length) {
+        return item.images.filter(Boolean);
+      }
+
+      return item?.image ? [item.image] : [];
+    });
+  });
+
+  ensurePlanLimit(
+    validatePlanLimit(tenant, {
+      type: "image",
+      nextCount: imageAssets.length
+    })
+  );
+
+  imageAssets.forEach((asset) => {
+    ensurePlanLimit(
+      validatePlanLimit(tenant, {
+        type: "image",
+        nextCount: imageAssets.length,
+        fileSizeBytes: Number(asset?.sizeBytes || 0)
+      })
+    );
+  });
+
+  const audioAssets = categoryCollections.flatMap((items) => {
+    return (Array.isArray(items) ? items : []).map((item) => item?.audio).filter(Boolean);
+  });
+
+  if (tenant?.messages?.audio) {
+    audioAssets.push(tenant.messages.audio);
+  }
+
+  ensurePlanLimit(
+    validatePlanLimit(tenant, {
+      type: "audio",
+      nextCount: audioAssets.length
+    })
+  );
+
+}
+
 function buildDefaultTenant(tenantId, input = {}) {
   return normalizeTenant({
     ...defaultTenantConfig,
@@ -380,6 +468,8 @@ function writeTenant(tenantId, tenantData) {
     tenantId: resolvedTenantId,
     meta: mergeMeta(tenantData.meta || {}, {})
   });
+
+  validateTenantPlanConstraints(normalizedTenant);
 
   writeJsonFile(filePath, normalizedTenant);
   return normalizedTenant;

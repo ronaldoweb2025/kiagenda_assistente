@@ -7,6 +7,7 @@ const authRoutes = require("./routes/authRoutes");
 const tenantAdminRoutes = require("./routes/tenantAdminRoutes");
 const tenantRuntimeRoutes = require("./routes/tenantRuntimeRoutes");
 const { passport } = require("./auth/googleAuth");
+const { bootstrapPlanSettingsStore } = require("./tenancy/planSettingsStore");
 const { bootstrapTenantConfigStore } = require("./tenancy/tenantConfigStore");
 const { bootstrapTenantSessionStore } = require("./tenancy/tenantSessionStore");
 const { bootstrapTenantStateStore } = require("./tenancy/tenantStateStore");
@@ -19,6 +20,7 @@ const frontendPath = path.resolve(__dirname, "../frontend");
 bootstrapTenantConfigStore();
 bootstrapTenantSessionStore();
 bootstrapTenantStateStore();
+bootstrapPlanSettingsStore();
 
 app.use(
   session({

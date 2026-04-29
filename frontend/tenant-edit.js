@@ -2,6 +2,7 @@ const dashboardState = {
   tenantId: "",
   tenant: null,
   session: null,
+  planSettings: {},
   currentSection: "overview",
   sessionPollTimer: null,
   sessionAutoStartAttempted: false,
@@ -61,6 +62,7 @@ const dashboardElements = {
   overviewTestButton: document.getElementById("overviewTestButton"),
   overviewPlanBadge: document.getElementById("overviewPlanBadge"),
   planFeaturesList: document.getElementById("planFeaturesList"),
+  planUsageList: document.getElementById("planUsageList"),
   whatsappStatus: document.getElementById("whatsappStatus"),
   accountWhatsappNumber: document.getElementById("accountWhatsappNumber"),
   connectedWhatsappNumber: document.getElementById("connectedWhatsappNumber"),
@@ -111,7 +113,17 @@ const dashboardElements = {
   currentPlanName: document.getElementById("currentPlanName"),
   currentPlanDescription: document.getElementById("currentPlanDescription"),
   currentSubscriptionStatus: document.getElementById("currentSubscriptionStatus"),
+  currentPlanUsageSummary: document.getElementById("currentPlanUsageSummary"),
   plansUpgradeButton: document.getElementById("plansUpgradeButton"),
+  essentialPlanCard: document.getElementById("essentialPlanCard"),
+  professionalPlanCard: document.getElementById("professionalPlanCard"),
+  businessPlanCard: document.getElementById("businessPlanCard"),
+  essentialPlanPrice: document.getElementById("essentialPlanPrice"),
+  professionalPlanPrice: document.getElementById("professionalPlanPrice"),
+  businessPlanPrice: document.getElementById("businessPlanPrice"),
+  essentialPlanFeatures: document.getElementById("essentialPlanFeatures"),
+  professionalPlanFeatures: document.getElementById("professionalPlanFeatures"),
+  businessPlanFeatures: document.getElementById("businessPlanFeatures"),
   productsPanel: document.getElementById("productsPanel"),
   servicesPanel: document.getElementById("servicesPanel"),
   productName: document.getElementById("productName"),
@@ -124,6 +136,7 @@ const dashboardElements = {
   productImages: document.getElementById("productImages"),
   productImagesStatus: document.getElementById("productImagesStatus"),
   productMediaNotice: document.getElementById("productMediaNotice"),
+  productsUsageCounter: document.getElementById("productsUsageCounter"),
   addProductButton: document.getElementById("addProductButton"),
   cancelProductEditButton: document.getElementById("cancelProductEditButton"),
   productsList: document.getElementById("productsList"),
@@ -137,6 +150,7 @@ const dashboardElements = {
   serviceImage: document.getElementById("serviceImage"),
   serviceImageStatus: document.getElementById("serviceImageStatus"),
   serviceMediaNotice: document.getElementById("serviceMediaNotice"),
+  servicesUsageCounter: document.getElementById("servicesUsageCounter"),
   addServiceButton: document.getElementById("addServiceButton"),
   cancelServiceEditButton: document.getElementById("cancelServiceEditButton"),
   servicesList: document.getElementById("servicesList"),
@@ -148,6 +162,7 @@ const dashboardElements = {
   partnershipKeywords: document.getElementById("partnershipKeywords"),
   generatePartnershipKeywordsButton: document.getElementById("generatePartnershipKeywordsButton"),
   partnershipKeywordSuggestions: document.getElementById("partnershipKeywordSuggestions"),
+  partnershipsUsageCounter: document.getElementById("partnershipsUsageCounter"),
   addPartnershipButton: document.getElementById("addPartnershipButton"),
   cancelPartnershipEditButton: document.getElementById("cancelPartnershipEditButton"),
   partnershipsList: document.getElementById("partnershipsList"),
@@ -194,7 +209,7 @@ const dashboardElements = {
 };
 
 function isProfessionalPlan() {
-  return String(dashboardState.tenant?.plan || "essential") === "professional";
+  return ["professional", "business"].includes(String(dashboardState.tenant?.plan || "essential"));
 }
 
 function normalizeSubscriptionStatus(value) {
@@ -214,30 +229,171 @@ function hasActiveSubscription() {
   return status === "active" || status === "trial";
 }
 
+function getPlanKey() {
+  const normalizedPlan = String(dashboardState.tenant?.plan || "essential").trim().toLowerCase();
+
+  if (normalizedPlan === "professional") {
+    return "professional";
+  }
+
+  if (normalizedPlan === "business") {
+    return "business";
+  }
+
+  return "essential";
+}
+
+function getDefaultPlanSettings() {
+  return {
+    essential: {
+      priceMonthly: 49.9,
+      allowAI: false,
+      allowImages: false,
+      maxImagesPerAccount: 0,
+      maxImageSizeMB: 1,
+      autoOptimizeImages: true,
+      allowAudio: false,
+      maxAudioPerAccount: 0,
+      maxCategories: 5,
+      maxItemsPerCategory: 10,
+      allowSubcategories: false,
+      maxSubcategoriesPerCategory: 0,
+      upgradeMessage: "Limite do seu plano atingido. Faca upgrade para liberar mais recursos."
+    },
+    professional: {
+      priceMonthly: 97,
+      allowAI: true,
+      allowImages: true,
+      maxImagesPerAccount: 10,
+      maxImageSizeMB: 1,
+      autoOptimizeImages: true,
+      allowAudio: true,
+      maxAudioPerAccount: 1,
+      maxCategories: 10,
+      maxItemsPerCategory: 20,
+      allowSubcategories: false,
+      maxSubcategoriesPerCategory: 0,
+      upgradeMessage: "Limite do seu plano atingido. Faca upgrade para liberar mais recursos."
+    },
+    business: {
+      priceMonthly: 197,
+      allowAI: true,
+      allowImages: true,
+      maxImagesPerAccount: 20,
+      maxImageSizeMB: 1,
+      autoOptimizeImages: true,
+      allowAudio: true,
+      maxAudioPerAccount: 1,
+      maxCategories: 15,
+      maxItemsPerCategory: 30,
+      allowSubcategories: true,
+      maxSubcategoriesPerCategory: 5,
+      upgradeMessage: "Limite do seu plano atingido. Faca upgrade para liberar mais recursos."
+    }
+  };
+}
+
+function getAllPlanSettings() {
+  const defaultSettings = getDefaultPlanSettings();
+  return Object.keys(defaultSettings).reduce((accumulator, planKey) => {
+    accumulator[planKey] = {
+      ...defaultSettings[planKey],
+      ...(dashboardState.planSettings?.[planKey] || {})
+    };
+    return accumulator;
+  }, {});
+}
+
+function getCurrentPlanSettings() {
+  return getAllPlanSettings()[getPlanKey()];
+}
+
+function formatPriceMonthly(value) {
+  const numericValue = Number(value || 0);
+  return Number.isFinite(numericValue)
+    ? numericValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "R$ 0,00";
+}
+
+function countUsedCategories() {
+  return [
+    dashboardState.tenant?.products || [],
+    dashboardState.tenant?.services || [],
+    dashboardState.tenant?.partnerships || []
+  ].filter((items) => Array.isArray(items) && items.length > 0).length;
+}
+
+function countUsedImages() {
+  return [
+    dashboardState.tenant?.products || [],
+    dashboardState.tenant?.services || [],
+    dashboardState.tenant?.partnerships || []
+  ].reduce((total, items) => {
+    return total + items.reduce((innerTotal, item) => {
+      if (Array.isArray(item?.images) && item.images.length) {
+        return innerTotal + item.images.filter(Boolean).length;
+      }
+
+      return innerTotal + (item?.image ? 1 : 0);
+    }, 0);
+  }, 0);
+}
+
+function countUsedAudio() {
+  return dashboardState.tenant?.messages?.audio ? 1 : 0;
+}
+
+function getUpgradeMessage() {
+  return getCurrentPlanSettings().upgradeMessage || "Limite do seu plano atingido. Faca upgrade para liberar mais recursos.";
+}
+
 function canUseFeatureInPanel(feature) {
   const normalizedFeature = String(feature || "").trim().toLowerCase();
+  const plan = getCurrentPlanSettings();
 
   if (!hasActiveSubscription()) {
     return false;
   }
 
-  if (["text", "products", "services", "links", "handoff"].includes(normalizedFeature)) {
+  if (["text", "products", "services", "partnerships", "links", "handoff", "categories"].includes(normalizedFeature)) {
     return true;
   }
 
-  if (["ai", "image", "images", "audio", "media"].includes(normalizedFeature)) {
-    return isProfessionalPlan();
+  if (normalizedFeature === "ai") {
+    return Boolean(plan.allowAI);
+  }
+
+  if (["image", "images"].includes(normalizedFeature)) {
+    return Boolean(plan.allowImages);
+  }
+
+  if (normalizedFeature === "audio") {
+    return Boolean(plan.allowAudio);
+  }
+
+  if (normalizedFeature === "media") {
+    return Boolean(plan.allowImages || plan.allowAudio);
   }
 
   return false;
 }
 
 function getPlanLabel() {
-  return isProfessionalPlan() ? "Profissional" : "Essencial";
+  const planKey = getPlanKey();
+
+  if (planKey === "professional") {
+    return "Profissional";
+  }
+
+  if (planKey === "business") {
+    return "Business";
+  }
+
+  return "Essencial";
 }
 
 function hasProfessionalAccess() {
-  return isProfessionalPlan() && hasActiveSubscription();
+  return hasActiveSubscription() && (canUseFeatureInPanel("ai") || canUseFeatureInPanel("images") || canUseFeatureInPanel("audio"));
 }
 
 function getPlanDescription() {
@@ -282,6 +438,149 @@ function getSubscriptionStatusLabel() {
 
 function openPlanUpgrade() {
   window.alert("Solicite o upgrade com o administrador.");
+}
+
+function getPlanDescription() {
+  const plan = getCurrentPlanSettings();
+  return [
+    `Mensalidade de ${formatPriceMonthly(plan.priceMonthly)}`,
+    plan.allowAI ? "IA liberada" : "IA bloqueada",
+    plan.allowImages ? `${plan.maxImagesPerAccount} imagem(ns) por conta` : "Sem imagens",
+    plan.allowAudio ? `${Math.min(plan.maxAudioPerAccount, 1)} audio(s) por conta` : "Sem audio",
+    `${plan.maxCategories} categoria(s)`,
+    `${plan.maxItemsPerCategory} item(ns) por categoria`
+  ].join(" | ");
+}
+
+function getPlanFeatures() {
+  const plan = getCurrentPlanSettings();
+  const features = [
+    "Atendimento por texto",
+    "Produtos e servicos",
+    "Links",
+    "Atendimento humano",
+    `Ate ${plan.maxCategories} categoria(s)`,
+    `Ate ${plan.maxItemsPerCategory} item(ns) por categoria`
+  ];
+
+  if (plan.allowAI) {
+    features.push("IA do atendimento");
+  }
+
+  if (plan.allowImages) {
+    features.push(`${plan.maxImagesPerAccount} imagem(ns) por conta`);
+    features.push(`Imagem de ate ${plan.maxImageSizeMB} MB`);
+  }
+
+  if (plan.allowAudio) {
+    features.push(`${Math.min(plan.maxAudioPerAccount, 1)} audio(s) por conta`);
+  }
+
+  if (plan.allowSubcategories) {
+    features.push(`Subcategorias ate ${plan.maxSubcategoriesPerCategory} por categoria`);
+  }
+
+  return features;
+}
+
+function openPlanUpgrade() {
+  window.alert(getUpgradeMessage());
+}
+
+function getUsageSummary() {
+  const plan = getCurrentPlanSettings();
+  return {
+    categories: {
+      used: countUsedCategories(),
+      limit: plan.maxCategories
+    },
+    images: {
+      used: countUsedImages(),
+      limit: plan.maxImagesPerAccount
+    },
+    audio: {
+      used: countUsedAudio(),
+      limit: Math.min(plan.maxAudioPerAccount, 1)
+    }
+  };
+}
+
+function renderUsageList(container, lines) {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = "";
+
+  lines.forEach((line) => {
+    const item = document.createElement("p");
+    item.className = "field-help";
+    item.textContent = line;
+    container.appendChild(item);
+  });
+}
+
+function getPlanCardFeatureLines(planKey) {
+  const plan = getAllPlanSettings()[planKey];
+  const features = [
+    `Mensalidade: ${formatPriceMonthly(plan.priceMonthly)}`,
+    `Categorias: ate ${plan.maxCategories}`,
+    `Itens por categoria: ate ${plan.maxItemsPerCategory}`,
+    plan.allowAI ? "IA liberada" : "IA bloqueada",
+    plan.allowImages ? `Imagens: ate ${plan.maxImagesPerAccount}` : "Imagens bloqueadas",
+    plan.allowAudio ? `Audio: ate ${Math.min(plan.maxAudioPerAccount, 1)}` : "Audio bloqueado"
+  ];
+
+  if (plan.allowSubcategories) {
+    features.push(`Subcategorias: ate ${plan.maxSubcategoriesPerCategory}`);
+  }
+
+  return features;
+}
+
+function ensureCategoryLimit(kind, collection) {
+  const usage = countUsedCategories();
+  const currentPlan = getCurrentPlanSettings();
+  const isNewCategoryActivation = !collection.length;
+
+  if (isNewCategoryActivation && usage >= currentPlan.maxCategories) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  if (collection.length >= currentPlan.maxItemsPerCategory) {
+    throw new Error(getUpgradeMessage());
+  }
+}
+
+function ensureImageLimit(nextImageCount, assets = []) {
+  const currentPlan = getCurrentPlanSettings();
+
+  if (!currentPlan.allowImages) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  if (nextImageCount > currentPlan.maxImagesPerAccount) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  const maxImageBytes = Number(currentPlan.maxImageSizeMB || 0) * 1024 * 1024;
+  assets.forEach((asset) => {
+    if (Number(asset?.sizeBytes || 0) > maxImageBytes) {
+      throw new Error(`Cada imagem deve ter no maximo ${currentPlan.maxImageSizeMB} MB.`);
+    }
+  });
+}
+
+function ensureAudioLimit(nextAudioCount) {
+  const currentPlan = getCurrentPlanSettings();
+
+  if (!currentPlan.allowAudio) {
+    throw new Error(getUpgradeMessage());
+  }
+
+  if (nextAudioCount > Math.min(currentPlan.maxAudioPerAccount, 1)) {
+    throw new Error(getUpgradeMessage());
+  }
 }
 
 function setFeedback(message) {
@@ -1160,8 +1459,8 @@ function startMessageEdit(messageType) {
     dashboardState.tenant.messages.audio,
     "Opcional. Esse audio sera enviado junto com o atendimento humano."
   );
-  dashboardElements.messageAudioField.classList.toggle("hidden-view", !hasProfessionalAccess());
-  dashboardElements.messageAudioLockNotice.classList.toggle("hidden-view", hasProfessionalAccess());
+  dashboardElements.messageAudioField.classList.toggle("hidden-view", !canUseFeatureInPanel("audio"));
+  dashboardElements.messageAudioLockNotice.classList.toggle("hidden-view", canUseFeatureInPanel("audio"));
   dashboardElements.handoffEditor.classList.remove("hidden-view");
   dashboardElements.handoffMessage.focus();
 }
@@ -1174,7 +1473,7 @@ async function saveMessageEdit(messageType) {
   } else if (messageType === "handoff") {
     dashboardState.tenant.messages.handoff = dashboardElements.handoffMessage.value.trim();
 
-    if (hasProfessionalAccess()) {
+    if (canUseFeatureInPanel("audio")) {
       const audioFile = dashboardElements.messageAudio?.files?.[0] || null;
 
       if (audioFile) {
@@ -1182,6 +1481,7 @@ async function saveMessageEdit(messageType) {
           throw new Error("O audio de atendimento precisa estar em formato MP3.");
         }
 
+        ensureAudioLimit(audioFile ? 1 : countUsedAudio());
         dashboardState.tenant.messages.audio = await readMediaFile(audioFile, "audio/");
       }
     } else {
@@ -1476,6 +1776,7 @@ function renderOverview() {
     dashboardState.tenant.services.length +
     (dashboardState.tenant.partnerships || []).length;
   const botActive = getBotEnabled();
+  const usage = getUsageSummary();
 
   dashboardElements.overviewWhatsappStatus.textContent = sessionLabel;
   applyStatusTone(dashboardElements.overviewWhatsappStatus, sessionTone);
@@ -1492,6 +1793,11 @@ function renderOverview() {
     badge.textContent = feature;
     dashboardElements.planFeaturesList.appendChild(badge);
   });
+  renderUsageList(dashboardElements.planUsageList, [
+    `Voce usou ${usage.categories.used} de ${usage.categories.limit} categorias`,
+    `Voce usou ${usage.images.used} de ${usage.images.limit} imagens`,
+    `Voce usou ${usage.audio.used} de ${usage.audio.limit} audio(s)`
+  ]);
 }
 
 function renderHeader() {
@@ -1530,10 +1836,10 @@ function renderBot() {
     ? "Seu atendimento automatico esta ativo e pode responder normalmente."
     : "Atendimento automatico pausado. Seu WhatsApp continua conectado, mas o robo nao respondera mensagens.";
   dashboardElements.botToggleButton.textContent = botEnabled ? "Pausar atendimento" : "Ativar atendimento";
-  dashboardElements.botPlanLockCard.classList.toggle("hidden-view", hasProfessionalAccess());
-  dashboardElements.aiToggleCard.classList.toggle("hidden-view", !hasProfessionalAccess());
-  dashboardElements.geminiConfigCard.classList.toggle("hidden-view", !hasProfessionalAccess());
-  dashboardElements.aiLockedNotice.classList.toggle("hidden-view", hasProfessionalAccess());
+  dashboardElements.botPlanLockCard.classList.toggle("hidden-view", canUseFeatureInPanel("ai"));
+  dashboardElements.aiToggleCard.classList.toggle("hidden-view", !canUseFeatureInPanel("ai"));
+  dashboardElements.geminiConfigCard.classList.toggle("hidden-view", !canUseFeatureInPanel("ai"));
+  dashboardElements.aiLockedNotice.classList.toggle("hidden-view", canUseFeatureInPanel("ai"));
   dashboardElements.aiEnabledToggle.checked = dashboardState.tenant.aiEnabled !== false;
   dashboardElements.geminiApiKey.value = dashboardState.tenant.integration?.gemini?.apiKey || "";
   dashboardElements.geminiModel.value = dashboardState.tenant.integration?.gemini?.model || "gemini-2.5-flash-lite";
@@ -1554,22 +1860,59 @@ function renderBot() {
 }
 
 function renderPlans() {
+  const allPlanSettings = getAllPlanSettings();
+  const usage = getUsageSummary();
+
   dashboardElements.currentPlanName.textContent = getPlanLabel();
   dashboardElements.currentPlanDescription.textContent = getPlanDescription();
   dashboardElements.currentSubscriptionStatus.textContent = getSubscriptionStatusLabel();
-  dashboardElements.plansUpgradeButton.classList.toggle("hidden-view", isProfessionalPlan());
+  renderUsageList(dashboardElements.currentPlanUsageSummary, [
+    `Categorias usadas: ${usage.categories.used} de ${usage.categories.limit}`,
+    `Imagens usadas: ${usage.images.used} de ${usage.images.limit}`,
+    `Audio usado: ${usage.audio.used} de ${usage.audio.limit}`
+  ]);
+  dashboardElements.essentialPlanPrice.textContent = `A partir de ${formatPriceMonthly(allPlanSettings.essential.priceMonthly)}/mes`;
+  dashboardElements.professionalPlanPrice.textContent = `A partir de ${formatPriceMonthly(allPlanSettings.professional.priceMonthly)}/mes`;
+  dashboardElements.businessPlanPrice.textContent = `A partir de ${formatPriceMonthly(allPlanSettings.business.priceMonthly)}/mes`;
+  [
+    ["essential", dashboardElements.essentialPlanFeatures],
+    ["professional", dashboardElements.professionalPlanFeatures],
+    ["business", dashboardElements.businessPlanFeatures]
+  ].forEach(([planKey, container]) => {
+    container.innerHTML = "";
+    getPlanCardFeatureLines(planKey).forEach((feature) => {
+      const item = document.createElement("li");
+      item.textContent = feature;
+      container.appendChild(item);
+    });
+  });
+  dashboardElements.essentialPlanCard.classList.toggle("is-highlighted", getPlanKey() === "essential");
+  dashboardElements.professionalPlanCard.classList.toggle("is-highlighted", getPlanKey() === "professional");
+  dashboardElements.businessPlanCard.classList.toggle("is-highlighted", getPlanKey() === "business");
+  dashboardElements.plansUpgradeButton.classList.toggle("hidden-view", getPlanKey() === "business");
   dashboardElements.upgradeButtons.forEach((button) => {
-    button.classList.toggle("hidden-view", isProfessionalPlan());
+    button.classList.toggle("hidden-view", getPlanKey() === "business");
   });
 }
 
 function renderCatalog() {
-  const shouldShowMediaFields = hasProfessionalAccess();
+  const shouldShowMediaFields = canUseFeatureInPanel("images");
+  const usage = getUsageSummary();
+  const currentPlan = getCurrentPlanSettings();
   document.querySelectorAll(".professional-media-field").forEach((field) => {
     field.classList.toggle("hidden-view", !shouldShowMediaFields);
   });
   dashboardElements.productMediaNotice.classList.toggle("hidden-view", shouldShowMediaFields);
   dashboardElements.serviceMediaNotice.classList.toggle("hidden-view", shouldShowMediaFields);
+  dashboardElements.productsUsageCounter.textContent = `Voce usou ${dashboardState.tenant.products.length} de ${currentPlan.maxItemsPerCategory} itens nesta categoria.`;
+  dashboardElements.servicesUsageCounter.textContent = `Voce usou ${dashboardState.tenant.services.length} de ${currentPlan.maxItemsPerCategory} itens nesta categoria.`;
+  dashboardElements.partnershipsUsageCounter.textContent = `Voce usou ${(dashboardState.tenant.partnerships || []).length} de ${currentPlan.maxItemsPerCategory} itens nesta categoria.`;
+  dashboardElements.productImagesStatus.textContent = shouldShowMediaFields
+    ? `Opcional. Voce usou ${usage.images.used} de ${currentPlan.maxImagesPerAccount} imagens no plano.`
+    : getUpgradeMessage();
+  dashboardElements.serviceImageStatus.textContent = shouldShowMediaFields
+    ? `Opcional. Voce usou ${usage.images.used} de ${currentPlan.maxImagesPerAccount} imagens no plano.`
+    : getUpgradeMessage();
   renderCatalogList(dashboardElements.productsList, dashboardState.tenant.products, "products");
   renderCatalogList(dashboardElements.servicesList, dashboardState.tenant.services, "services");
   renderCatalogList(dashboardElements.partnershipsList, dashboardState.tenant.partnerships || [], "partnerships");
@@ -1592,7 +1935,7 @@ function renderSettings() {
   dashboardElements.stateTTL.value = dashboardState.tenant.settings.stateTTL || 60;
   dashboardElements.handoffTimeout.value = dashboardState.tenant.settings.handoffTimeout || 30;
   dashboardElements.settingsPlanDescription.textContent = `Seu plano atual: ${getPlanLabel()}`;
-  dashboardElements.settingsUpgradeButton.classList.toggle("hidden-view", isProfessionalPlan());
+  dashboardElements.settingsUpgradeButton.classList.toggle("hidden-view", getPlanKey() === "business");
   dashboardElements.menuCustomReplyField.classList.toggle(
     "hidden-view",
     dashboardElements.menuType.value !== "customReply"
@@ -1705,7 +2048,8 @@ async function readMediaFile(file, allowedPrefix) {
       resolve({
         dataUrl: String(reader.result || ""),
         mimeType: String(file.type || ""),
-        fileName: String(file.name || "")
+        fileName: String(file.name || ""),
+        sizeBytes: Number(file.size || 0)
       });
     };
     reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo selecionado."));
@@ -1735,14 +2079,14 @@ async function readMediaFileList(files, allowedPrefix, maxItems) {
 
 async function buildCatalogMedia(kind, existingItem) {
   if (kind === "products") {
-    if (!isProfessionalPlan()) {
+    if (!canUseFeatureInPanel("images")) {
       return {
         images: Array.isArray(existingItem?.images) ? existingItem.images : existingItem?.image ? [existingItem.image] : []
       };
     }
 
     const imageFiles = dashboardElements.productImages?.files || [];
-    const images = imageFiles.length
+    const nextImages = imageFiles.length
       ? await readMediaFileList(imageFiles, "image/", 3)
       : Array.isArray(existingItem?.images) && existingItem.images.length
         ? existingItem.images
@@ -1750,7 +2094,15 @@ async function buildCatalogMedia(kind, existingItem) {
           ? [existingItem.image]
           : [];
 
-    return { images };
+    const currentItemImages = Array.isArray(existingItem?.images) && existingItem.images.length
+      ? existingItem.images.filter(Boolean).length
+      : existingItem?.image
+        ? 1
+        : 0;
+    const nextImageCount = countUsedImages() - currentItemImages + nextImages.filter(Boolean).length;
+    ensureImageLimit(nextImageCount, nextImages);
+
+    return { images: nextImages };
   }
 
   if (kind === "partnerships") {
@@ -1759,7 +2111,7 @@ async function buildCatalogMedia(kind, existingItem) {
     };
   }
 
-  if (!isProfessionalPlan()) {
+  if (!canUseFeatureInPanel("images")) {
     return {
       image: existingItem?.image || null
     };
@@ -1767,6 +2119,9 @@ async function buildCatalogMedia(kind, existingItem) {
 
   const imageFile = dashboardElements.serviceImage?.files?.[0] || null;
   const image = imageFile ? await readMediaFile(imageFile, "image/") : existingItem?.image || null;
+  const currentItemImages = existingItem?.image ? 1 : 0;
+  const nextImageCount = countUsedImages() - currentItemImages + (image ? 1 : 0);
+  ensureImageLimit(nextImageCount, image ? [image] : []);
 
   return { image };
 }
@@ -1832,6 +2187,10 @@ async function upsertCatalogItem(kind) {
   }
 
   const existingIndex = collection.findIndex((item) => item.id === nextItem.id);
+
+  if (existingIndex < 0) {
+    ensureCategoryLimit(kind, collection);
+  }
 
   if (existingIndex >= 0) {
     collection[existingIndex] = nextItem;
@@ -1951,7 +2310,7 @@ function addAdvancedMenuItem() {
 function syncFormToState() {
   dashboardState.tenant.active = dashboardElements.tenantActive.value === "true";
   dashboardState.tenant.botEnabled = dashboardElements.tenantActive.value === "true";
-  dashboardState.tenant.aiEnabled = hasProfessionalAccess()
+  dashboardState.tenant.aiEnabled = canUseFeatureInPanel("ai")
     ? Boolean(dashboardElements.aiEnabledToggle.checked)
     : false;
   dashboardState.tenant.business.name = dashboardElements.businessName.value.trim();
@@ -1964,8 +2323,8 @@ function syncFormToState() {
   dashboardState.tenant.botModel = dashboardElements.botModelSelect.value;
   dashboardState.tenant.integration = dashboardState.tenant.integration || {};
   dashboardState.tenant.integration.gemini = {
-    apiKey: hasProfessionalAccess() ? dashboardElements.geminiApiKey.value.trim() : "",
-    model: hasProfessionalAccess() ? dashboardElements.geminiModel.value : "gemini-2.5-flash-lite"
+    apiKey: canUseFeatureInPanel("ai") ? dashboardElements.geminiApiKey.value.trim() : "",
+    model: canUseFeatureInPanel("ai") ? dashboardElements.geminiModel.value : "gemini-2.5-flash-lite"
   };
 }
 
@@ -1996,6 +2355,15 @@ function buildPayload() {
     settings: { ...dashboardState.tenant.settings },
     integration: dashboardState.tenant.integration
   };
+}
+
+async function loadPlanSettings() {
+  try {
+    const response = await KiagendaApp.requestJson("/api/admin/plan-settings");
+    dashboardState.planSettings = response.data || {};
+  } catch (error) {
+    dashboardState.planSettings = getDefaultPlanSettings();
+  }
 }
 
 async function refreshSession() {
@@ -2215,6 +2583,7 @@ async function loadDashboard() {
   }
   consumeAuthSuccessMessage();
   stopSessionPolling();
+  await loadPlanSettings();
 
   let tenant;
 

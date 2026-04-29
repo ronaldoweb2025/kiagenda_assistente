@@ -1,6 +1,7 @@
 const adminState = {
   items: [],
   activationCodes: [],
+  planSettings: {},
   editingTenantId: "",
   accessCodePreview: null,
   activationCodeStatusFilter: "all",
@@ -23,7 +24,8 @@ const adminElements = {
   activationCodeStatusFilter: document.getElementById("activationCodeStatusFilter"),
   activationCodeSearch: document.getElementById("activationCodeSearch"),
   activationCodePreview: document.getElementById("activationCodePreview"),
-  activationCodesList: document.getElementById("activationCodesList")
+  activationCodesList: document.getElementById("activationCodesList"),
+  adminPlanSettingsList: document.getElementById("adminPlanSettingsList")
 };
 
 function setFeedback(message) {
@@ -41,7 +43,17 @@ function setAdminView(isAuthenticated) {
 }
 
 function getPlanLabel(plan) {
-  return String(plan || "essential") === "professional" ? "Profissional" : "Essencial";
+  const normalizedPlan = String(plan || "essential").trim().toLowerCase();
+
+  if (normalizedPlan === "professional") {
+    return "Profissional";
+  }
+
+  if (normalizedPlan === "business") {
+    return "Business";
+  }
+
+  return "Essencial";
 }
 
 function getSubscriptionLabel(status) {
@@ -105,6 +117,13 @@ function formatDateTime(value) {
 
 function formatUsesRemaining(item) {
   return item.usesRemaining === null ? "Ilimitado" : String(item.usesRemaining);
+}
+
+function formatPrice(value) {
+  const numericValue = Number(value || 0);
+  return Number.isFinite(numericValue)
+    ? numericValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+    : "R$ 0,00";
 }
 
 function buildActivationMessage(item) {
@@ -237,6 +256,91 @@ function renderActivationCodes() {
   });
 }
 
+function renderPlanSettings() {
+  adminElements.adminPlanSettingsList.innerHTML = "";
+  const entries = Object.entries(adminState.planSettings || {});
+
+  if (!entries.length) {
+    adminElements.adminPlanSettingsList.innerHTML = '<p class="empty-copy">Nenhum plano carregado ainda.</p>';
+    return;
+  }
+
+  entries.forEach(([planKey, planConfig]) => {
+    const card = document.createElement("section");
+    card.className = "section-subcard";
+    card.innerHTML = `
+      <div class="section-subcard-header">
+        <div>
+          <h4>${KiagendaApp.escapeHtml(getPlanLabel(planKey))}</h4>
+          <p class="muted-copy">Preco atual: ${KiagendaApp.escapeHtml(formatPrice(planConfig.priceMonthly))}</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        <label>
+          Preco mensal
+          <input type="number" min="0" step="0.01" data-plan="${planKey}" data-field="priceMonthly" value="${KiagendaApp.escapeHtml(planConfig.priceMonthly)}">
+        </label>
+        <label class="toggle-field">
+          <span>Liberar IA</span>
+          <input type="checkbox" data-plan="${planKey}" data-field="allowAI" ${planConfig.allowAI ? "checked" : ""}>
+        </label>
+        <label class="toggle-field">
+          <span>Liberar imagens</span>
+          <input type="checkbox" data-plan="${planKey}" data-field="allowImages" ${planConfig.allowImages ? "checked" : ""}>
+        </label>
+        <label>
+          Maximo de imagens por conta
+          <input type="number" min="0" step="1" data-plan="${planKey}" data-field="maxImagesPerAccount" value="${KiagendaApp.escapeHtml(planConfig.maxImagesPerAccount)}">
+        </label>
+        <label>
+          Tamanho maximo de imagem (MB)
+          <input type="number" min="0" step="0.1" data-plan="${planKey}" data-field="maxImageSizeMB" value="${KiagendaApp.escapeHtml(planConfig.maxImageSizeMB)}">
+        </label>
+        <label class="toggle-field">
+          <span>Otimizar imagens automaticamente</span>
+          <input type="checkbox" data-plan="${planKey}" data-field="autoOptimizeImages" ${planConfig.autoOptimizeImages ? "checked" : ""}>
+        </label>
+        <label class="toggle-field">
+          <span>Liberar audio</span>
+          <input type="checkbox" data-plan="${planKey}" data-field="allowAudio" ${planConfig.allowAudio ? "checked" : ""}>
+        </label>
+        <label>
+          Maximo de audios por conta
+          <input type="number" min="0" max="1" step="1" data-plan="${planKey}" data-field="maxAudioPerAccount" value="${KiagendaApp.escapeHtml(planConfig.maxAudioPerAccount)}">
+        </label>
+        <label>
+          Maximo de categorias
+          <input type="number" min="0" step="1" data-plan="${planKey}" data-field="maxCategories" value="${KiagendaApp.escapeHtml(planConfig.maxCategories)}">
+        </label>
+        <label>
+          Itens por categoria
+          <input type="number" min="0" step="1" data-plan="${planKey}" data-field="maxItemsPerCategory" value="${KiagendaApp.escapeHtml(planConfig.maxItemsPerCategory)}">
+        </label>
+        <label class="toggle-field">
+          <span>Liberar subcategorias</span>
+          <input type="checkbox" data-plan="${planKey}" data-field="allowSubcategories" ${planConfig.allowSubcategories ? "checked" : ""}>
+        </label>
+        <label>
+          Maximo de subcategorias por categoria
+          <input type="number" min="0" step="1" data-plan="${planKey}" data-field="maxSubcategoriesPerCategory" value="${KiagendaApp.escapeHtml(planConfig.maxSubcategoriesPerCategory)}">
+        </label>
+        <label class="full-width">
+          Mensagem de upgrade
+          <textarea data-plan="${planKey}" data-field="upgradeMessage">${KiagendaApp.escapeHtml(planConfig.upgradeMessage || "")}</textarea>
+        </label>
+      </div>
+      <div class="button-row">
+        <button type="button" class="primary-button" data-plan-save="${planKey}">Salvar ${KiagendaApp.escapeHtml(getPlanLabel(planKey))}</button>
+      </div>
+    `;
+
+    const saveButton = card.querySelector(`[data-plan-save="${planKey}"]`);
+    saveButton.addEventListener("click", () => runAction(() => savePlanSettings(planKey, card)));
+
+    adminElements.adminPlanSettingsList.appendChild(card);
+  });
+}
+
 function renderTenants() {
   adminElements.adminTenantsList.innerHTML = "";
   const visibleTenants = getVisibleAdminTenants();
@@ -305,6 +409,7 @@ function renderTenants() {
             <select data-role="plan">
               <option value="essential" ${tenant.plan === "essential" ? "selected" : ""}>Essencial</option>
               <option value="professional" ${tenant.plan === "professional" ? "selected" : ""}>Profissional</option>
+              <option value="business" ${tenant.plan === "business" ? "selected" : ""}>Business</option>
             </select>
           </label>
           <label>
@@ -370,6 +475,12 @@ async function loadActivationCodes() {
   renderActivationCodes();
 }
 
+async function loadPlanSettings() {
+  const response = await KiagendaApp.requestJson("/api/admin/plan-settings");
+  adminState.planSettings = response.data || {};
+  renderPlanSettings();
+}
+
 async function saveTenantPlan(tenantId, editorElement) {
   const plan = editorElement.querySelector('[data-role="plan"]').value;
   const subscriptionStatus = editorElement.querySelector('[data-role="subscriptionStatus"]').value;
@@ -388,6 +499,42 @@ async function saveTenantPlan(tenantId, editorElement) {
   adminState.editingTenantId = "";
   setFeedback(response.message || "Plano atualizado com sucesso.");
   await loadTenants();
+}
+
+function readPlanSettingsFromEditor(planKey, editorElement) {
+  const readField = (fieldName) => editorElement.querySelector(`[data-plan="${planKey}"][data-field="${fieldName}"]`);
+
+  return {
+    [planKey]: {
+      priceMonthly: Number(readField("priceMonthly").value || 0),
+      allowAI: Boolean(readField("allowAI").checked),
+      allowImages: Boolean(readField("allowImages").checked),
+      maxImagesPerAccount: Number(readField("maxImagesPerAccount").value || 0),
+      maxImageSizeMB: Number(readField("maxImageSizeMB").value || 0),
+      autoOptimizeImages: Boolean(readField("autoOptimizeImages").checked),
+      allowAudio: Boolean(readField("allowAudio").checked),
+      maxAudioPerAccount: Math.min(1, Number(readField("maxAudioPerAccount").value || 0)),
+      maxCategories: Number(readField("maxCategories").value || 0),
+      maxItemsPerCategory: Number(readField("maxItemsPerCategory").value || 0),
+      allowSubcategories: Boolean(readField("allowSubcategories").checked),
+      maxSubcategoriesPerCategory: Number(readField("maxSubcategoriesPerCategory").value || 0),
+      upgradeMessage: readField("upgradeMessage").value.trim()
+    }
+  };
+}
+
+async function savePlanSettings(planKey, editorElement) {
+  const response = await KiagendaApp.requestJson("/api/admin/plan-settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(readPlanSettingsFromEditor(planKey, editorElement))
+  });
+
+  adminState.planSettings = response.data || {};
+  renderPlanSettings();
+  setFeedback(response.message || `Plano ${getPlanLabel(planKey)} atualizado com sucesso.`);
 }
 
 async function createActivationCode() {
@@ -446,7 +593,7 @@ async function handleLogin(event) {
 
   setAdminView(true);
   setFeedback("Acesso admin liberado.");
-  await Promise.all([loadTenants(), loadActivationCodes()]);
+  await Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings()]);
 }
 
 function logout() {
@@ -482,7 +629,7 @@ adminElements.activationCodeSearch.addEventListener("input", () => {
 
 if (ensureAdminAccess()) {
   setAdminView(true);
-  Promise.all([loadTenants(), loadActivationCodes()]).catch(() => {
+  Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings()]).catch(() => {
     setFeedback("Nao foi possivel carregar os dados do admin.");
   });
 } else {
