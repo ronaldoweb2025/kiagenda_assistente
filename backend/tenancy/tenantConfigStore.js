@@ -2,6 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const { defaultTenantConfig } = require("../config/defaultTenantConfig");
 const {
+  countAudioAssets,
+  countImages,
+  countUsedCategories,
+  getPlanLimits,
   normalizePlan,
   normalizeSubscriptionStatus,
   validatePlanLimit
@@ -11,7 +15,10 @@ const { ensureDirectory, readJsonFile, writeJsonFile } = require("../utils/jsonF
 
 const dataDirectoryPath = path.resolve(__dirname, "../../data");
 const tenantsDirectoryPath = path.resolve(dataDirectoryPath, "tenants");
+const backupsDirectoryPath = path.resolve(dataDirectoryPath, "backups");
 const legacyConfigFilePath = path.resolve(dataDirectoryPath, "config.json");
+const PLAN_DOWNGRADE_WARNING =
+  "Voce possui recursos acima do limite do plano atual. Eles foram preservados, mas alguns ficarao bloqueados ate fazer upgrade.";
 
 function normalizeBoolean(value) {
   return Boolean(value);
@@ -196,6 +203,12 @@ function buildTenantMeta(input = {}) {
   };
 }
 
+function buildAppliedPlanLimits(tenant = {}) {
+  return getPlanLimits({
+    plan: tenant?.plan
+  });
+}
+
 function mergeMeta(currentMeta = {}, nextMeta = {}) {
   return {
     createdAt: normalizeString(currentMeta.createdAt) || normalizeString(nextMeta.createdAt) || new Date().toISOString(),
@@ -205,6 +218,7 @@ function mergeMeta(currentMeta = {}, nextMeta = {}) {
 
 function normalizeTenant(input = {}) {
   const tenantId = assertTenantId(input?.tenantId);
+  const plan = normalizePlan(input?.plan);
 
   return {
     tenantId,
@@ -221,8 +235,9 @@ function normalizeTenant(input = {}) {
           ? normalizeBoolean(input.active)
           : true,
     aiEnabled: input?.aiEnabled !== undefined ? normalizeBoolean(input.aiEnabled) : true,
-    plan: normalizePlan(input?.plan),
+    plan,
     subscriptionStatus: normalizeSubscriptionStatus(input?.subscriptionStatus),
+    planLimits: buildAppliedPlanLimits({ plan }),
     onboardingCompleted: input?.onboardingCompleted !== undefined ? normalizeBoolean(input.onboardingCompleted) : false,
     botModel: normalizeString(input?.botModel),
     business: {
@@ -336,6 +351,82 @@ function mergeTenant(baseTenant, partialTenant) {
   });
 }
 
+function collectTenantPlanConstraintViolations(tenant) {
+  const tenantForLimitCheck = {
+    ...tenant,
+    subscriptionStatus: "active"
+  };
+  const violations = [];
+  const categoryCollections = [
+    tenant.products || [],
+    tenant.services || [],
+    tenant.partnerships || []
+  ];
+  const usedCategories = countUsedCategories(tenant);
+  const categoryValidation = validatePlanLimit(tenantForLimitCheck, {
+    type: "category",
+    nextCount: usedCategories
+  });
+
+  if (!categoryValidation?.allowed) {
+    violations.push({
+      resource: "categories",
+      reason: categoryValidation.reason,
+      usage: usedCategories,
+      limit: categoryValidation?.limits?.maxCategories
+    });
+  }
+
+  categoryCollections.forEach((items, index) => {
+    const itemCount = Array.isArray(items) ? items.length : 0;
+    const itemValidation = validatePlanLimit(tenantForLimitCheck, {
+      type: "item",
+      nextCount: itemCount
+    });
+
+    if (!itemValidation?.allowed) {
+      violations.push({
+        resource: ["products", "services", "partnerships"][index],
+        reason: itemValidation.reason,
+        usage: itemCount,
+        limit: itemValidation?.limits?.maxItemsPerCategory
+      });
+    }
+  });
+
+  const imageCount = countImages(tenant);
+  const imageValidation = validatePlanLimit(tenantForLimitCheck, {
+    type: "image",
+    nextCount: imageCount
+  });
+
+  if (!imageValidation?.allowed) {
+    violations.push({
+      resource: "images",
+      reason: imageValidation.reason,
+      usage: imageCount,
+      limit: imageValidation?.limits?.maxImagesPerAccount
+    });
+  }
+
+  const audioCount = countAudioAssets(tenant);
+  const audioValidation = validatePlanLimit(tenantForLimitCheck, {
+    type: "audio",
+    nextCount: audioCount
+  });
+
+  if (!audioValidation?.allowed) {
+    violations.push({
+      resource: "audio",
+      reason: audioValidation.reason,
+      usage: audioCount,
+      limit: audioValidation?.limits?.maxAudioPerAccount
+    });
+  }
+
+  return violations;
+}
+
 function ensurePlanLimit(validationResult) {
   if (validationResult?.allowed) {
     return;
@@ -352,7 +443,7 @@ function validateTenantPlanConstraints(tenant) {
     tenant.services || [],
     tenant.partnerships || []
   ];
-  const usedCategories = categoryCollections.filter((items) => Array.isArray(items) && items.length > 0).length;
+  const usedCategories = countUsedCategories(tenant);
 
   ensurePlanLimit(
     validatePlanLimit(tenant, {
@@ -383,7 +474,7 @@ function validateTenantPlanConstraints(tenant) {
   ensurePlanLimit(
     validatePlanLimit(tenant, {
       type: "image",
-      nextCount: imageAssets.length
+      nextCount: countImages(tenant)
     })
   );
 
@@ -408,7 +499,7 @@ function validateTenantPlanConstraints(tenant) {
   ensurePlanLimit(
     validatePlanLimit(tenant, {
       type: "audio",
-      nextCount: audioAssets.length
+      nextCount: countAudioAssets(tenant)
     })
   );
 
@@ -429,6 +520,7 @@ function getTenantFilePath(tenantId) {
 
 function ensureDataDirectories() {
   ensureDirectory(tenantsDirectoryPath);
+  ensureDirectory(backupsDirectoryPath);
 }
 
 function tenantExists(tenantId) {
@@ -460,7 +552,7 @@ function readTenant(tenantId) {
   });
 }
 
-function writeTenant(tenantId, tenantData) {
+function writeTenant(tenantId, tenantData, options = {}) {
   const resolvedTenantId = assertTenantId(tenantId);
   const filePath = getTenantFilePath(resolvedTenantId);
   const normalizedTenant = normalizeTenant({
@@ -469,7 +561,9 @@ function writeTenant(tenantId, tenantData) {
     meta: mergeMeta(tenantData.meta || {}, {})
   });
 
-  validateTenantPlanConstraints(normalizedTenant);
+  if (!options.skipPlanValidation) {
+    validateTenantPlanConstraints(normalizedTenant);
+  }
 
   writeJsonFile(filePath, normalizedTenant);
   return normalizedTenant;
@@ -489,7 +583,118 @@ function deleteTenantFile(tenantId) {
 function updateTenant(tenantId, partialTenant) {
   const currentTenant = readTenant(tenantId);
   const mergedTenant = mergeTenant(currentTenant, partialTenant || {});
-  return writeTenant(tenantId, mergedTenant);
+  const currentViolations = collectTenantPlanConstraintViolations(currentTenant);
+  const nextViolations = collectTenantPlanConstraintViolations(mergedTenant);
+
+  if (!currentViolations.length) {
+    return writeTenant(tenantId, mergedTenant);
+  }
+
+  const currentViolationIndex = new Map(
+    currentViolations.map((violation) => [`${violation.resource}:${violation.reason}`, Number(violation.usage || 0)])
+  );
+  const hasNewOrWorseViolation = nextViolations.some((violation) => {
+    const key = `${violation.resource}:${violation.reason}`;
+    const previousUsage = currentViolationIndex.get(key);
+
+    if (previousUsage === undefined) {
+      return true;
+    }
+
+    return Number(violation.usage || 0) > previousUsage;
+  });
+
+  if (hasNewOrWorseViolation) {
+    validateTenantPlanConstraints(mergedTenant);
+  }
+
+  return writeTenant(tenantId, mergedTenant, {
+    skipPlanValidation: true
+  });
+}
+
+function buildBackupFileName(tenantId, timestamp = new Date()) {
+  const safeTimestamp = timestamp.toISOString().replace(/[:.]/g, "-");
+  return `tenant-${assertTenantId(tenantId)}-${safeTimestamp}.json`;
+}
+
+function createTenantBackup(tenantId) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  const currentTenant = readTenant(resolvedTenantId);
+  const backupFileName = buildBackupFileName(resolvedTenantId);
+  const backupFilePath = path.resolve(backupsDirectoryPath, backupFileName);
+
+  writeJsonFile(backupFilePath, currentTenant);
+
+  return {
+    fileName: backupFileName,
+    filePath: backupFilePath
+  };
+}
+
+function listTenantBackups(tenantId) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  ensureDataDirectories();
+
+  return fs
+    .readdirSync(backupsDirectoryPath)
+    .filter((fileName) => fileName.startsWith(`tenant-${resolvedTenantId}-`) && fileName.endsWith(".json"))
+    .sort((left, right) => right.localeCompare(left))
+    .map((fileName) => ({
+      fileName,
+      filePath: path.resolve(backupsDirectoryPath, fileName)
+    }));
+}
+
+function restoreTenantBackup(tenantId, backupFileName) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  const backupEntry = listTenantBackups(resolvedTenantId).find((item) => item.fileName === backupFileName);
+
+  if (!backupEntry) {
+    const error = new Error("backup_nao_encontrado");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const backupPayload = readJsonFile(backupEntry.filePath, null);
+
+  if (!backupPayload) {
+    const error = new Error("backup_invalido");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return writeTenant(
+    resolvedTenantId,
+    {
+      ...backupPayload,
+      tenantId: resolvedTenantId
+    },
+    {
+      skipPlanValidation: true
+    }
+  );
+}
+
+function updateTenantPlan(tenantId, newPlan, status) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  const currentTenant = readTenant(resolvedTenantId);
+  const backup = createTenantBackup(resolvedTenantId);
+  const mergedTenant = mergeTenant(currentTenant, {
+    plan: newPlan,
+    subscriptionStatus: status
+  });
+  const violations = collectTenantPlanConstraintViolations(mergedTenant);
+  const updatedTenant = writeTenant(resolvedTenantId, mergedTenant, {
+    skipPlanValidation: true
+  });
+
+  return {
+    tenant: updatedTenant,
+    backup,
+    warning: violations.length ? PLAN_DOWNGRADE_WARNING : "",
+    violations
+  };
 }
 
 function listTenants() {
@@ -545,12 +750,17 @@ function bootstrapTenantConfigStore() {
 module.exports = {
   bootstrapTenantConfigStore,
   buildDefaultTenant,
+  createTenantBackup,
   getTenantFilePath,
   listTenants,
+  listTenantBackups,
   readTenant,
+  restoreTenantBackup,
   tenantExists,
   deleteTenantFile,
+  updateTenantPlan,
   updateTenant,
   writeTenant,
+  backupsDirectoryPath,
   tenantsDirectoryPath
 };

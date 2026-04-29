@@ -2,8 +2,11 @@ const {
   buildDefaultTenant,
   deleteTenantFile,
   listTenants,
+  listTenantBackups,
   readTenant,
+  restoreTenantBackup,
   tenantExists,
+  updateTenantPlan: persistTenantPlanUpdate,
   updateTenant,
   writeTenant
 } = require("../tenancy/tenantConfigStore");
@@ -59,6 +62,27 @@ function saveTenant(tenantId, payload = {}) {
   return updateTenant(tenantId, payload);
 }
 
+function changeTenantPlan(tenantId, newPlan, status) {
+  return persistTenantPlanUpdate(tenantId, newPlan, status);
+}
+
+function restoreLatestTenantBackup(tenantId) {
+  const backups = listTenantBackups(tenantId);
+
+  if (!backups.length) {
+    const error = new Error("Nenhum backup encontrado para este cliente.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const restoredTenant = restoreTenantBackup(tenantId, backups[0].fileName);
+
+  return {
+    tenant: restoredTenant,
+    backup: backups[0]
+  };
+}
+
 function disableTenant(tenantId) {
   return updateTenant(tenantId, {
     active: false
@@ -87,10 +111,12 @@ async function deleteTenantPermanently(tenantId) {
 }
 
 module.exports = {
+  changeTenantPlan,
   createTenant,
   deleteTenantPermanently,
   disableTenant,
   getTenant,
   listTenantSummaries,
+  restoreLatestTenantBackup,
   saveTenant
 };

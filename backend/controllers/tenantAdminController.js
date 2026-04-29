@@ -1,12 +1,19 @@
 const {
+  changeTenantPlan,
   createTenant,
   deleteTenantPermanently,
   disableTenant,
   getTenant,
   listTenantSummaries,
+  restoreLatestTenantBackup,
   saveTenant
 } = require("../services/tenantService");
 const { readPlanSettings, updatePlanSettings } = require("../tenancy/planSettingsStore");
+
+function isPlanChangePayload(payload = {}) {
+  const keys = Object.keys(payload);
+  return keys.length > 0 && keys.every((key) => ["plan", "subscriptionStatus"].includes(key));
+}
 
 function getTenants(req, res) {
   res.json({
@@ -33,10 +40,36 @@ function getAdminPlanSettings(req, res) {
 }
 
 function putTenant(req, res) {
-  const tenant = saveTenant(req.params.tenantId, req.body || {});
+  const payload = req.body || {};
+
+  if (isPlanChangePayload(payload)) {
+    const result = changeTenantPlan(req.params.tenantId, payload.plan, payload.subscriptionStatus);
+    const message = result.warning
+      ? `Plano atualizado com sucesso. ${result.warning}`
+      : "Plano atualizado com sucesso.";
+
+    res.json({
+      message,
+      warning: result.warning,
+      backup: result.backup,
+      data: result.tenant
+    });
+    return;
+  }
+
+  const tenant = saveTenant(req.params.tenantId, payload);
   res.json({
     message: "Cliente atualizado com sucesso.",
     data: tenant
+  });
+}
+
+function postRestoreTenantBackup(req, res) {
+  const result = restoreLatestTenantBackup(req.params.tenantId);
+  res.json({
+    message: "Backup restaurado com sucesso.",
+    backup: result.backup,
+    data: result.tenant
   });
 }
 
@@ -76,6 +109,7 @@ module.exports = {
   getAdminPlanSettings,
   getTenantById,
   getTenants,
+  postRestoreTenantBackup,
   postTenant,
   putAdminPlanSettings,
   putTenant

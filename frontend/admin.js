@@ -76,6 +76,10 @@ function getWhatsappConnectionLabel(isConnected) {
   return isConnected ? "Conectado" : "Desconectado";
 }
 
+function getBackupRestoreConfirmationLabel(tenant) {
+  return String(tenant.businessName || tenant.tenantId || "este cliente").trim();
+}
+
 function getVisibleAdminTenants() {
   return adminState.items.filter((tenant) => String(tenant.type || "client").toLowerCase() === "client");
 }
@@ -397,6 +401,13 @@ function renderTenants() {
     toggleButton.addEventListener("click", () => runAction(() => toggleTenantStatus(tenant)));
     actions.appendChild(toggleButton);
 
+    const restoreBackupButton = document.createElement("button");
+    restoreBackupButton.type = "button";
+    restoreBackupButton.className = "neutral-button";
+    restoreBackupButton.textContent = "Restaurar backup do cliente";
+    restoreBackupButton.addEventListener("click", () => runAction(() => restoreTenantBackup(tenant)));
+    actions.appendChild(restoreBackupButton);
+
     card.appendChild(actions);
 
     if (isEditing) {
@@ -497,7 +508,26 @@ async function saveTenantPlan(tenantId, editorElement) {
   });
 
   adminState.editingTenantId = "";
-  setFeedback(response.message || "Plano atualizado com sucesso.");
+  setFeedback(response.message || response.warning || "Plano atualizado com sucesso.");
+  await loadTenants();
+}
+
+async function restoreTenantBackup(tenant) {
+  const tenantLabel = getBackupRestoreConfirmationLabel(tenant);
+  const confirmed = window.confirm(
+    `Restaurar o backup mais recente de ${tenantLabel}? Isso substitui a configuracao atual do cliente pelos dados preservados no backup.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/admin/tenants/${tenant.tenantId}/restore-backup`, {
+    method: "POST"
+  });
+
+  setFeedback(response.message || "Backup restaurado com sucesso.");
+  adminState.editingTenantId = "";
   await loadTenants();
 }
 

@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { listTenants, readTenant } = require("../tenancy/tenantConfigStore");
-const { createTenant, saveTenant } = require("./tenantService");
+const { changeTenantPlan, createTenant, saveTenant } = require("./tenantService");
 const {
   findAuthAccountByEmail,
   findAuthAccountByGoogleId,
@@ -723,10 +723,7 @@ async function activateAccountWithCode(payload = {}) {
     activationCodeExpiresAt: codeEntry.expiresAt || "",
     activationCodeUsedAt: new Date().toISOString()
   });
-  saveTenant(account.tenantId, {
-    plan: codeEntry.plan,
-    subscriptionStatus: "active"
-  });
+  changeTenantPlan(account.tenantId, codeEntry.plan, "active");
 
   updateAdminAccessCode(code, {
     ...codeEntry,

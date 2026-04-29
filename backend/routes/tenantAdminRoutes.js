@@ -4,6 +4,7 @@ const {
   getAdminPlanSettings,
   getTenantById,
   getTenants,
+  postRestoreTenantBackup,
   postTenant,
   putAdminPlanSettings,
   putTenant
@@ -15,6 +16,7 @@ router.get("/api/tenants", getTenants);
 router.post("/api/tenants", postTenant);
 router.get("/api/admin/plan-settings", getAdminPlanSettings);
 router.put("/api/admin/plan-settings", putAdminPlanSettings);
+router.post("/api/admin/tenants/:tenantId/restore-backup", postRestoreTenantBackup);
 router.get("/api/tenants/:tenantId", getTenantById);
 router.put("/api/tenants/:tenantId", putTenant);
 router.delete("/api/tenants/:tenantId", deleteTenant);
