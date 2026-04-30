@@ -2,6 +2,12 @@ const dashboardState = {
   tenantId: "",
   tenant: null,
   session: null,
+  campaignsData: {
+    campaigns: [],
+    queue: [],
+    logs: [],
+    inboundReplies: []
+  },
   planSettings: {},
   currentSection: "overview",
   sessionPollTimer: null,
@@ -131,6 +137,18 @@ const dashboardElements = {
   essentialPlanFeatures: document.getElementById("essentialPlanFeatures"),
   professionalPlanFeatures: document.getElementById("professionalPlanFeatures"),
   businessPlanFeatures: document.getElementById("businessPlanFeatures"),
+  campaignFeatureStatus: document.getElementById("campaignFeatureStatus"),
+  campaignDailyLimit: document.getElementById("campaignDailyLimit"),
+  campaignsCount: document.getElementById("campaignsCount"),
+  campaignQueueCount: document.getElementById("campaignQueueCount"),
+  campaignImportFile: document.getElementById("campaignImportFile"),
+  campaignImportFileName: document.getElementById("campaignImportFileName"),
+  importCampaignButton: document.getElementById("importCampaignButton"),
+  refreshCampaignsButton: document.getElementById("refreshCampaignsButton"),
+  processCampaignWorkerButton: document.getElementById("processCampaignWorkerButton"),
+  campaignsList: document.getElementById("campaignsList"),
+  campaignQueueList: document.getElementById("campaignQueueList"),
+  campaignLogsList: document.getElementById("campaignLogsList"),
   productsPanel: document.getElementById("productsPanel"),
   servicesPanel: document.getElementById("servicesPanel"),
   productName: document.getElementById("productName"),
@@ -441,6 +459,14 @@ function getUpgradeMessage() {
   return getCurrentPlanSettings().upgradeMessage || "Limite do seu plano atingido. Faca upgrade para liberar mais recursos.";
 }
 
+function getCampaignFeatureConfig() {
+  return dashboardState.tenant?.features?.campaigns || {};
+}
+
+function isNinjaSendEnabled() {
+  return Boolean(getCampaignFeatureConfig().enabledByAdmin);
+}
+
 function canUseFeatureInPanel(feature) {
   const normalizedFeature = String(feature || "").trim().toLowerCase();
   const plan = getCurrentPlanSettings();
@@ -467,6 +493,10 @@ function canUseFeatureInPanel(feature) {
 
   if (normalizedFeature === "media") {
     return Boolean(plan.allowImages || plan.allowAudio);
+  }
+
+  if (["campaign", "campaigns", "ninja-send", "ninja_send"].includes(normalizedFeature)) {
+    return isNinjaSendEnabled();
   }
 
   return false;
@@ -817,23 +847,47 @@ function applyChipTone(element, tone, label) {
 
 function getSavedSection() {
   const savedSection = window.localStorage.getItem(DASHBOARD_SECTION_STORAGE_KEY);
-  const sectionExists = dashboardElements.panels.some((panel) => panel.dataset.section === savedSection);
+  const sectionExists = dashboardElements.panels.some((panel) => {
+    if (panel.dataset.section !== savedSection) {
+      return false;
+    }
+
+    if (panel.dataset.feature === "ninja-send" && !isNinjaSendEnabled()) {
+      return false;
+    }
+
+    return true;
+  });
   return sectionExists ? savedSection : "overview";
 }
 
 function showSection(sectionId) {
-  const nextSection = dashboardElements.panels.some((panel) => panel.dataset.section === sectionId)
+  const nextSection = dashboardElements.panels.some((panel) => {
+    if (panel.dataset.section !== sectionId) {
+      return false;
+    }
+
+    if (panel.dataset.feature === "ninja-send" && !isNinjaSendEnabled()) {
+      return false;
+    }
+
+    return true;
+  })
     ? sectionId
     : "overview";
 
   dashboardState.currentSection = nextSection;
 
   dashboardElements.panels.forEach((panel) => {
-    panel.classList.toggle("active", panel.dataset.section === nextSection);
+    const shouldHideForFeature = panel.dataset.feature === "ninja-send" && !isNinjaSendEnabled();
+    panel.classList.toggle("hidden-view", shouldHideForFeature);
+    panel.classList.toggle("active", !shouldHideForFeature && panel.dataset.section === nextSection);
   });
 
   dashboardElements.navButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.target === nextSection);
+    const shouldHideForFeature = button.dataset.feature === "ninja-send" && !isNinjaSendEnabled();
+    button.classList.toggle("hidden-view", shouldHideForFeature);
+    button.classList.toggle("active", !shouldHideForFeature && button.dataset.target === nextSection);
   });
 
   window.localStorage.setItem(DASHBOARD_SECTION_STORAGE_KEY, nextSection);
@@ -2295,6 +2349,141 @@ function renderPlans() {
   });
 }
 
+function formatCampaignDateTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("pt-BR");
+}
+
+function renderCampaignCards() {
+  if (!dashboardElements.campaignsList) {
+    return;
+  }
+
+  dashboardElements.campaignsList.innerHTML = "";
+  const campaigns = Array.isArray(dashboardState.campaignsData?.campaigns) ? dashboardState.campaignsData.campaigns : [];
+
+  if (!campaigns.length) {
+    dashboardElements.campaignsList.innerHTML = '<p class="empty-copy">Nenhuma campanha importada ainda.</p>';
+    return;
+  }
+
+  [...campaigns].reverse().forEach((campaign) => {
+    const card = document.createElement("article");
+    card.className = "tenant-card admin-tenant-card";
+    card.innerHTML = `
+      <div>
+        <h3>${KiagendaApp.escapeHtml(campaign.campaignName || campaign.batchId || "Campanha")}</h3>
+        <p><strong>Lote:</strong> ${KiagendaApp.escapeHtml(campaign.batchId || "-")}</p>
+        <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(campaign.status || "-")}</p>
+        <p><strong>Total:</strong> ${KiagendaApp.escapeHtml(String(campaign.totals?.total || 0))}</p>
+        <p><strong>Enviadas:</strong> ${KiagendaApp.escapeHtml(String(campaign.totals?.sent || 0))}</p>
+        <p><strong>Pausadas por resposta:</strong> ${KiagendaApp.escapeHtml(String(campaign.totals?.replied || 0))}</p>
+        <p><strong>Falhas:</strong> ${KiagendaApp.escapeHtml(String(campaign.totals?.failed || 0))}</p>
+        <p><strong>Importada em:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(campaign.createdAt))}</p>
+      </div>
+    `;
+
+    const actions = document.createElement("div");
+    actions.className = "button-row";
+
+    const cancelButton = document.createElement("button");
+    cancelButton.type = "button";
+    cancelButton.className = "neutral-button";
+    cancelButton.textContent = "Cancelar campanha";
+    cancelButton.addEventListener("click", () => runAction(() => cancelCampaign(campaign.campaignId)));
+    actions.appendChild(cancelButton);
+
+    card.appendChild(actions);
+    dashboardElements.campaignsList.appendChild(card);
+  });
+}
+
+function renderCampaignQueue() {
+  if (!dashboardElements.campaignQueueList) {
+    return;
+  }
+
+  dashboardElements.campaignQueueList.innerHTML = "";
+  const queueItems = Array.isArray(dashboardState.campaignsData?.queue) ? dashboardState.campaignsData.queue.slice(-10).reverse() : [];
+
+  if (!queueItems.length) {
+    dashboardElements.campaignQueueList.innerHTML = '<p class="empty-copy">Nenhum item na fila ainda.</p>';
+    return;
+  }
+
+  queueItems.forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "tenant-card admin-tenant-card";
+    card.innerHTML = `
+      <div>
+        <h3>${KiagendaApp.escapeHtml(item.company || item.phone || "Lead")}</h3>
+        <p><strong>Telefone:</strong> ${KiagendaApp.escapeHtml(item.phone || "-")}</p>
+        <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(item.status || "-")}</p>
+        <p><strong>Agendado para:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.scheduledFor || item.processing?.nextEligibleAt))}</p>
+        <p><strong>Motivo:</strong> ${KiagendaApp.escapeHtml(item.failureReason || "-")}</p>
+      </div>
+    `;
+    dashboardElements.campaignQueueList.appendChild(card);
+  });
+}
+
+function renderCampaignLogs() {
+  if (!dashboardElements.campaignLogsList) {
+    return;
+  }
+
+  dashboardElements.campaignLogsList.innerHTML = "";
+  const logs = Array.isArray(dashboardState.campaignsData?.logs) ? dashboardState.campaignsData.logs.slice(-10).reverse() : [];
+
+  if (!logs.length) {
+    dashboardElements.campaignLogsList.innerHTML = '<p class="empty-copy">Nenhum log recente.</p>';
+    return;
+  }
+
+  logs.forEach((log) => {
+    const card = document.createElement("article");
+    card.className = "tenant-card admin-tenant-card";
+    card.innerHTML = `
+      <div>
+        <h3>${KiagendaApp.escapeHtml(log.type || "evento")}</h3>
+        <p><strong>Nivel:</strong> ${KiagendaApp.escapeHtml(log.level || "-")}</p>
+        <p><strong>Mensagem:</strong> ${KiagendaApp.escapeHtml(log.message || "-")}</p>
+        <p><strong>Quando:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(log.createdAt))}</p>
+      </div>
+    `;
+    dashboardElements.campaignLogsList.appendChild(card);
+  });
+}
+
+function renderCampaigns() {
+  if (!dashboardElements.campaignFeatureStatus) {
+    return;
+  }
+
+  const featureConfig = getCampaignFeatureConfig();
+  const enabled = isNinjaSendEnabled();
+  const campaigns = Array.isArray(dashboardState.campaignsData?.campaigns) ? dashboardState.campaignsData.campaigns : [];
+  const queueItems = Array.isArray(dashboardState.campaignsData?.queue) ? dashboardState.campaignsData.queue : [];
+  const activeQueueItems = queueItems.filter((item) => ["pending", "scheduled", "sending"].includes(String(item.status || "")));
+
+  dashboardElements.campaignFeatureStatus.textContent = enabled ? "Ativo" : "Indisponivel";
+  dashboardElements.campaignDailyLimit.textContent = String(featureConfig.dailyLimit || 10);
+  dashboardElements.campaignsCount.textContent = String(campaigns.length);
+  dashboardElements.campaignQueueCount.textContent = String(activeQueueItems.length);
+  if (dashboardElements.campaignImportFileName) {
+    dashboardElements.campaignImportFileName.value =
+      dashboardElements.campaignImportFile?.files?.[0]?.name || dashboardElements.campaignImportFileName.value || "";
+  }
+
+  renderCampaignCards();
+  renderCampaignQueue();
+  renderCampaignLogs();
+}
+
 function renderCatalog() {
   ensureTenantCategories();
   syncLegacyCatalogCollectionsFromCategories();
@@ -2355,6 +2544,7 @@ function renderAll() {
   renderWhatsapp();
   renderBot();
   renderPlans();
+  renderCampaigns();
   renderCatalog();
   renderLinks();
   renderSettings();
@@ -2807,6 +2997,27 @@ async function loadPlanSettings() {
   }
 }
 
+async function loadCampaignsData() {
+  if (!dashboardState.tenantId || !isNinjaSendEnabled()) {
+    dashboardState.campaignsData = {
+      campaigns: [],
+      queue: [],
+      logs: [],
+      inboundReplies: []
+    };
+    return dashboardState.campaignsData;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns`);
+  dashboardState.campaignsData = {
+    campaigns: Array.isArray(response.campaigns) ? response.campaigns : [],
+    queue: Array.isArray(response.queue) ? response.queue : [],
+    logs: Array.isArray(response.logs) ? response.logs : [],
+    inboundReplies: Array.isArray(response.inboundReplies) ? response.inboundReplies : []
+  };
+  return dashboardState.campaignsData;
+}
+
 async function refreshSession() {
   try {
     dashboardState.session = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/session`);
@@ -2880,6 +3091,81 @@ async function pollSession(attempt = 0) {
   dashboardState.sessionPollTimer = window.setTimeout(() => {
     runAction(() => pollSession(attempt + 1));
   }, 2000);
+}
+
+async function importCampaignJson() {
+  if (!isNinjaSendEnabled()) {
+    throw new Error("O recurso Ninja Send nao esta liberado para esta conta.");
+  }
+
+  const file = dashboardElements.campaignImportFile?.files?.[0];
+
+  if (!file) {
+    throw new Error("Selecione um arquivo JSON para importar.");
+  }
+
+  const rawContent = await file.text();
+  let payload;
+
+  try {
+    payload = JSON.parse(rawContent);
+  } catch (error) {
+    throw new Error("O arquivo selecionado nao contem um JSON valido.");
+  }
+
+  payload.source_file_name = file.name;
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/import`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  dashboardElements.campaignImportFile.value = "";
+  dashboardElements.campaignImportFileName.value = "";
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Campanha importada com sucesso.");
+}
+
+async function refreshCampaignsPanel() {
+  await loadCampaignsData();
+  renderAll();
+  setFeedback("Fila Ninja Send atualizada com sucesso.");
+}
+
+async function processCampaignWorkerNow() {
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/process`, {
+    method: "POST"
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Worker executado com sucesso.");
+}
+
+async function cancelCampaign(campaignId) {
+  const confirmed = window.confirm("Cancelar esta campanha? Os itens pendentes e agendados nao serao mais enviados.");
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/${campaignId}/cancel`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reason: "cancelled_by_tenant"
+    })
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Campanha cancelada com sucesso.");
 }
 
 async function saveTenant() {
@@ -3075,6 +3361,7 @@ async function loadDashboard() {
   ensureTenantCategories();
   syncLegacyCatalogCollectionsFromCategories();
   dashboardState.activeCategoryId = getCatalogCategories()[0]?.id || "";
+  await loadCampaignsData();
 
   resetProductForm();
   resetServiceForm();
@@ -3106,6 +3393,12 @@ dashboardElements.connectWhatsappButton.addEventListener("click", () => runActio
 dashboardElements.resetWhatsappSessionButton.addEventListener("click", () => runAction(resetWhatsappSession));
 dashboardElements.disconnectWhatsappButton.addEventListener("click", () => runAction(stopWhatsappSession));
 dashboardElements.refreshWhatsappButton.addEventListener("click", () => runAction(refreshSession));
+dashboardElements.campaignImportFile?.addEventListener("change", () => {
+  dashboardElements.campaignImportFileName.value = dashboardElements.campaignImportFile?.files?.[0]?.name || "";
+});
+dashboardElements.importCampaignButton?.addEventListener("click", () => runAction(importCampaignJson));
+dashboardElements.refreshCampaignsButton?.addEventListener("click", () => runAction(refreshCampaignsPanel));
+dashboardElements.processCampaignWorkerButton?.addEventListener("click", () => runAction(processCampaignWorkerNow));
 dashboardElements.showProductsTabButton.addEventListener("click", () => setCatalogTab("products"));
 dashboardElements.showServicesTabButton.addEventListener("click", () => setCatalogTab("services"));
 dashboardElements.showPartnershipsTabButton.addEventListener("click", () => setCatalogTab("partnerships"));

@@ -21,6 +21,7 @@
         <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
         <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento Automático</button>
         <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
+        <button class="dashboard-nav-button hidden-view" type="button" data-target="campaigns" data-feature="ninja-send">Ninja Send</button>
         <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
         <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
         <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
@@ -59,6 +60,7 @@
           <button class="dashboard-nav-button" type="button" data-target="whatsapp">WhatsApp</button>
           <button class="dashboard-nav-button" type="button" data-target="bot">Atendimento automatico</button>
           <button class="dashboard-nav-button" type="button" data-target="plans">Planos</button>
+          <button class="dashboard-nav-button hidden-view" type="button" data-target="campaigns" data-feature="ninja-send">Ninja Send</button>
           <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
           <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
           <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
@@ -390,6 +392,87 @@
 
           <div class="button-row">
             <button id="plansUpgradeButton" class="secondary-button" type="button" data-upgrade-action>Fazer upgrade para Profissional</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-section hidden-view" data-section="campaigns" data-feature="ninja-send">
+        <article class="card section-card">
+          <p class="eyebrow">Ninja Send</p>
+          <h3>Campanhas pequenas e controladas</h3>
+          <p class="muted-copy">Importe manualmente arquivos JSON prontos, acompanhe a fila e mantenha os envios com previsibilidade.</p>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span>Status</span>
+              <strong id="campaignFeatureStatus">Indisponivel</strong>
+            </article>
+            <article class="stat-card">
+              <span>Limite diario</span>
+              <strong id="campaignDailyLimit">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Campanhas</span>
+              <strong id="campaignsCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span>Fila ativa</span>
+              <strong id="campaignQueueCount">0</strong>
+            </article>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Importar campanha JSON</h4>
+                <p class="muted-copy">Escolha um arquivo da sua pasta local e envie um lote por vez.</p>
+              </div>
+            </div>
+            <div class="field-grid">
+              <label class="full-width">
+                Arquivo JSON
+                <input id="campaignImportFile" type="file" accept=".json,application/json">
+              </label>
+              <label class="full-width">
+                Arquivo selecionado
+                <input id="campaignImportFileName" type="text" readonly placeholder="Nenhum arquivo selecionado">
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="importCampaignButton" class="primary-button" type="button">Importar JSON</button>
+              <button id="refreshCampaignsButton" class="secondary-button" type="button">Atualizar fila</button>
+              <button id="processCampaignWorkerButton" class="neutral-button" type="button">Rodar worker agora</button>
+            </div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Campanhas importadas</h4>
+                <p class="muted-copy">Lotes com status, volume e cancelamento manual.</p>
+              </div>
+            </div>
+            <div id="campaignsList" class="tenant-list admin-tenant-list"></div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Fila recente</h4>
+                <p class="muted-copy">Itens enviados, falhas e pausas por resposta.</p>
+              </div>
+            </div>
+            <div id="campaignQueueList" class="tenant-list admin-tenant-list"></div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
+                <h4>Logs recentes</h4>
+                <p class="muted-copy">Eventos do importador e do worker.</p>
+              </div>
+            </div>
+            <div id="campaignLogsList" class="tenant-list admin-tenant-list"></div>
           </div>
         </article>
       </section>

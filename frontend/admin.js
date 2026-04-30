@@ -78,6 +78,10 @@ function getWhatsappConnectionLabel(isConnected) {
   return isConnected ? "Conectado" : "Desconectado";
 }
 
+function getNinjaSendLabel(tenant) {
+  return tenant?.ninjaSendEnabled ? `Ativo (${tenant.ninjaSendDailyLimit || 10}/dia)` : "Inativo";
+}
+
 function getBackupRestoreConfirmationLabel(tenant) {
   return String(tenant.businessName || tenant.tenantId || "este cliente").trim();
 }
@@ -439,6 +443,7 @@ function renderTenants() {
         <p><strong>Plano atual:</strong> ${KiagendaApp.escapeHtml(getPlanLabel(tenant.plan))}</p>
         <p><strong>Assinatura:</strong> ${KiagendaApp.escapeHtml(getSubscriptionLabel(tenant.subscriptionStatus))}</p>
         <p><strong>WhatsApp do atendimento:</strong> ${KiagendaApp.escapeHtml(getWhatsappConnectionLabel(tenant.whatsappConnected))}</p>
+        <p><strong>Ninja Send:</strong> ${KiagendaApp.escapeHtml(getNinjaSendLabel(tenant))}</p>
         <p><strong>Status da conta/ativacao:</strong> ${KiagendaApp.escapeHtml(getActivationStatusLabel(tenant.activationStatus))}</p>
       </div>
     `;
@@ -500,13 +505,21 @@ function renderTenants() {
               <option value="trial" ${tenant.subscriptionStatus === "trial" ? "selected" : ""}>Teste</option>
             </select>
           </label>
+          <label class="toggle-field">
+            <span>Ativar Ninja Send</span>
+            <input type="checkbox" data-role="ninjaSendEnabled" ${tenant.ninjaSendEnabled ? "checked" : ""}>
+          </label>
+          <label>
+            Limite diario Ninja Send
+            <input type="number" min="1" max="20" step="1" data-role="ninjaSendDailyLimit" value="${KiagendaApp.escapeHtml(String(tenant.ninjaSendDailyLimit || 10))}">
+          </label>
         </div>
       `;
 
       const saveButton = document.createElement("button");
       saveButton.type = "button";
       saveButton.className = "primary-button";
-      saveButton.textContent = "Salvar plano";
+      saveButton.textContent = "Salvar plano e Ninja Send";
       saveButton.addEventListener("click", () => runAction(() => saveTenantPlan(tenant.tenantId, editor)));
 
       const editorActions = document.createElement("div");
@@ -570,6 +583,8 @@ async function loadBotModelSettings() {
 async function saveTenantPlan(tenantId, editorElement) {
   const plan = editorElement.querySelector('[data-role="plan"]').value;
   const subscriptionStatus = editorElement.querySelector('[data-role="subscriptionStatus"]').value;
+  const ninjaSendEnabled = Boolean(editorElement.querySelector('[data-role="ninjaSendEnabled"]').checked);
+  const ninjaSendDailyLimit = Number(editorElement.querySelector('[data-role="ninjaSendDailyLimit"]').value || 10);
 
   const response = await KiagendaApp.requestJson(`/api/tenants/${tenantId}`, {
     method: "PUT",
@@ -582,8 +597,20 @@ async function saveTenantPlan(tenantId, editorElement) {
     })
   });
 
+  await KiagendaApp.requestJson(`/api/admin/tenants/${tenantId}/campaign-access`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      enabledByAdmin: ninjaSendEnabled,
+      privatePlanCode: ninjaSendEnabled ? "ninja-send" : "",
+      dailyLimit: ninjaSendDailyLimit
+    })
+  });
+
   adminState.editingTenantId = "";
-  setFeedback(response.message || response.warning || "Plano atualizado com sucesso.");
+  setFeedback(response.message || response.warning || "Plano e Ninja Send atualizados com sucesso.");
   await loadTenants();
 }
 

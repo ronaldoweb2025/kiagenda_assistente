@@ -7,6 +7,7 @@ const { canUseFeature } = require("../services/featureAccessService");
 const { readTenant, listTenants, updateTenant } = require("../tenancy/tenantConfigStore");
 const { readSession, writeSession } = require("../tenancy/tenantSessionStore");
 const { assertTenantId } = require("../tenancy/tenantResolver");
+const { markLeadReplied, normalizePhone } = require("../campaigns/campaignService");
 
 const authDirectoryPath = path.resolve(__dirname, "../../data/.wwebjs_auth");
 const sessions = {};
@@ -544,6 +545,16 @@ function normalizeWhatsappRecipient(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function getReadyClientEntryByTenantId(tenantId) {
+  const entry = getSessionEntry(tenantId);
+
+  if (!entry?.client || !entry?.isReady) {
+    return null;
+  }
+
+  return entry;
+}
+
 function buildSessionDeliverySnapshot() {
   return listTenants().map((tenant) => {
     const session = readSession(tenant.tenantId);
@@ -626,6 +637,25 @@ async function sendSystemWhatsappMessage(whatsapp, message, options = {}) {
   );
 
   return false;
+}
+
+async function sendTenantWhatsappMessage(tenantId, whatsapp, message, options = {}) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  const entry = getReadyClientEntryByTenantId(resolvedTenantId);
+  const recipient = normalizeWhatsappRecipient(whatsapp);
+  const purpose = String(options.purpose || "mensagem do tenant").trim();
+
+  if (!recipient || !message) {
+    throw new Error("Destinatario ou mensagem invalidos para envio.");
+  }
+
+  if (!entry) {
+    throw new Error("Sessao do WhatsApp nao esta pronta para este tenant.");
+  }
+
+  await entry.client.sendMessage(`${recipient}@c.us`, String(message));
+  console.log(`[tenant:${resolvedTenantId}] ${purpose} enviado para ${recipient}.`);
+  return true;
 }
 
 function registerClientEvents(client, entry, sessionId) {
@@ -757,6 +787,23 @@ function registerClientEvents(client, entry, sessionId) {
 
   client.on("message", async (msg) => {
     try {
+      const inboundPhone = normalizePhone(getContactIdFromMessage(msg));
+
+      if (inboundPhone) {
+        markLeadReplied(tenantId, {
+          phone: inboundPhone,
+          contactId: getContactIdFromMessage(msg),
+          body: String(msg.body || ""),
+          receivedAt: new Date().toISOString(),
+          raw: {
+            from: msg.from,
+            to: msg.to,
+            type: msg.type || "",
+            hasMedia: Boolean(msg.hasMedia)
+          }
+        });
+      }
+
       await handleIncomingWhatsappMessage(tenantId, client, msg);
     } catch (error) {
       console.error(`Erro ao processar mensagem do tenant ${tenantId}:`, error);
@@ -989,6 +1036,7 @@ async function bootstrapSessions() {
 module.exports = {
   bootstrapSessions,
   resetSession,
+  sendTenantWhatsappMessage,
   sendSystemWhatsappMessage,
   sessions,
   sendHumanLikeMessage,

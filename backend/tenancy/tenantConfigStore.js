@@ -57,6 +57,16 @@ function normalizeNumber(value, fallbackValue) {
   return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : fallbackValue;
 }
 
+function normalizeInteger(value, fallbackValue, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallbackValue;
+  }
+
+  return Math.min(max, Math.max(min, Math.floor(numericValue)));
+}
+
 function normalizeStringList(values) {
   if (!Array.isArray(values)) {
     return [];
@@ -279,6 +289,22 @@ function normalizeMenu(menuItems) {
   });
 }
 
+function normalizeCampaignFeature(input = {}) {
+  const fallback = defaultTenantConfig.features.campaigns;
+
+  return {
+    enabledByAdmin:
+      input?.enabledByAdmin !== undefined ? normalizeBoolean(input.enabledByAdmin) : fallback.enabledByAdmin,
+    privatePlanCode: normalizeString(input?.privatePlanCode) || fallback.privatePlanCode,
+    dailyLimit: normalizeInteger(input?.dailyLimit, fallback.dailyLimit, { min: 1, max: 20 }),
+    maxDailyLimit: normalizeInteger(input?.maxDailyLimit, fallback.maxDailyLimit, { min: 1, max: 50 }),
+    operationalWindowStart: normalizeString(input?.operationalWindowStart) || fallback.operationalWindowStart,
+    operationalWindowEnd: normalizeString(input?.operationalWindowEnd) || fallback.operationalWindowEnd,
+    timezone: normalizeString(input?.timezone) || fallback.timezone,
+    replyPauseHours: normalizeInteger(input?.replyPauseHours, fallback.replyPauseHours, { min: 1, max: 720 })
+  };
+}
+
 function buildTenantMeta(input = {}) {
   return {
     createdAt: normalizeString(input.createdAt) || new Date().toISOString(),
@@ -371,6 +397,9 @@ function normalizeTenant(input = {}) {
         accountStatus: normalizeString(input?.integration?.kiagenda?.accountStatus) || "not_connected",
         mode: normalizeString(input?.integration?.kiagenda?.mode) || null
       }
+    },
+    features: {
+      campaigns: normalizeCampaignFeature(input?.features?.campaigns)
     },
     warning: collectTenantPlanConstraintViolations({
       ...migratedTenant,
@@ -469,6 +498,14 @@ function mergeTenant(baseTenant, partialTenant) {
         ...baseTenant.integration.kiagenda,
         ...(partialTenant.integration?.kiagenda || {})
       }
+    },
+    features: {
+      ...(baseTenant.features || defaultTenantConfig.features),
+      ...(partialTenant.features || {}),
+      campaigns: normalizeCampaignFeature({
+        ...((baseTenant.features && baseTenant.features.campaigns) || defaultTenantConfig.features.campaigns),
+        ...((partialTenant.features && partialTenant.features.campaigns) || {})
+      })
     },
     meta: mergeMeta(baseTenant.meta, partialTenant.meta)
   });
@@ -824,6 +861,7 @@ function listTenants() {
   return fs
     .readdirSync(tenantsDirectoryPath)
     .filter((fileName) => fileName.endsWith(".json"))
+    .filter((fileName) => !fileName.includes(".pre-restore-"))
     .map((fileName) => readTenant(fileName.replace(/\.json$/i, "")))
     .sort((left, right) => {
       const leftName = left.business.name || left.tenantId;

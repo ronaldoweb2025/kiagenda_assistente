@@ -6,6 +6,7 @@ const path = require("path");
 const authRoutes = require("./routes/authRoutes");
 const tenantAdminRoutes = require("./routes/tenantAdminRoutes");
 const tenantRuntimeRoutes = require("./routes/tenantRuntimeRoutes");
+const tenantCampaignRoutes = require("./routes/tenantCampaignRoutes");
 const { passport } = require("./auth/googleAuth");
 const { bootstrapPlanSettingsStore } = require("./tenancy/planSettingsStore");
 const { bootstrapBotModelSettingsStore } = require("./tenancy/botModelSettingsStore");
@@ -13,6 +14,8 @@ const { bootstrapTenantConfigStore } = require("./tenancy/tenantConfigStore");
 const { bootstrapTenantSessionStore } = require("./tenancy/tenantSessionStore");
 const { bootstrapTenantStateStore } = require("./tenancy/tenantStateStore");
 const { bootstrapSessions } = require("./bot/whatsappSessions");
+const { bootstrapCampaignStore } = require("./campaigns/campaignStore");
+const { startCampaignWorker } = require("./campaigns/campaignWorker");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3010);
@@ -23,6 +26,7 @@ bootstrapTenantSessionStore();
 bootstrapTenantStateStore();
 bootstrapPlanSettingsStore();
 bootstrapBotModelSettingsStore();
+bootstrapCampaignStore();
 
 app.use(
   session({
@@ -43,6 +47,7 @@ app.use(express.static(frontendPath));
 app.use(authRoutes);
 app.use(tenantAdminRoutes);
 app.use(tenantRuntimeRoutes);
+app.use(tenantCampaignRoutes);
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "index.html"));
@@ -59,4 +64,5 @@ app.listen(PORT, () => {
   bootstrapSessions().catch((error) => {
     console.error("Nao foi possivel restaurar as sessoes do WhatsApp no startup:", error);
   });
+  startCampaignWorker();
 });

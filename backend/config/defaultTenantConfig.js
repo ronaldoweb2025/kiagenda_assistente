@@ -169,6 +169,18 @@ const defaultTenantConfig = {
       mode: null
     }
   },
+  features: {
+    campaigns: {
+      enabledByAdmin: false,
+      privatePlanCode: "",
+      dailyLimit: 10,
+      maxDailyLimit: 20,
+      operationalWindowStart: "09:15",
+      operationalWindowEnd: "17:30",
+      timezone: "America/Sao_Paulo",
+      replyPauseHours: 72
+    }
+  },
   meta: {
     createdAt: "",
     updatedAt: ""

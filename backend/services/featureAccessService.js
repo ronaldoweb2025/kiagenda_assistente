@@ -118,6 +118,10 @@ function canUseFeature(tenant = {}, feature) {
     return limits.allowImages || limits.allowAudio;
   }
 
+  if (["campaign", "campaigns", "scheduled_campaigns", "outbound_campaigns"].includes(normalizedFeature)) {
+    return Boolean(tenant?.features?.campaigns?.enabledByAdmin);
+  }
+
   return false;
 }
 

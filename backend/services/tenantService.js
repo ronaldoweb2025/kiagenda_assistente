@@ -36,6 +36,8 @@ function listTenantSummaries() {
       customerName: account?.name || tenant.business.attendantName || "",
       whatsappConnected: tenant.whatsapp.connected,
       whatsappNumber: account?.whatsapp || tenant.whatsapp.number,
+      ninjaSendEnabled: Boolean(tenant.features?.campaigns?.enabledByAdmin),
+      ninjaSendDailyLimit: Number(tenant.features?.campaigns?.dailyLimit || 10),
       activationStatus: account?.activationStatus || "pending",
       updatedAt: tenant.meta.updatedAt
     };
