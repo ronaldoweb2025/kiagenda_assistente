@@ -1249,12 +1249,12 @@ function buildModelMessages(modelId) {
     kiagenda_servicos: {
       welcome:
         `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-        "Posso te ajudar a entender o atendimento e te orientar no agendamento pelo sistema.",
+        "Posso te passar informacoes basicas e te direcionar para o agendamento.",
       fallback:
         "Nao entendi totalmente sua mensagem.\n\n" +
-        "Posso te explicar o atendimento e te direcionar para o agendamento pelo sistema.",
+        "Posso te explicar o basico e te direcionar para o agendamento.",
       handoff:
-        "Voce pode ver os horarios disponiveis e agendar direto pelo sistema."
+        "E so acessar e escolher o melhor horario pra voce."
     },
     delivery: {
       welcome:
@@ -1283,7 +1283,7 @@ function buildModelMessages(modelId) {
   if (modelId === "kiagenda_servicos" && !hasLinks) {
     templates.kiagenda_servicos.welcome =
       `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-      "Posso te explicar o atendimento e te orientar no uso do sistema de agendamento.";
+      "Posso te explicar o basico e te orientar no uso do sistema de agendamento.";
   }
 
   if (modelId === "delivery" && !hasLinks) {

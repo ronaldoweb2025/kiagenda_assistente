@@ -156,8 +156,8 @@ function buildWelcomeMessage(config) {
   if (isKiagendaBot(config)) {
     return joinBlocks([
       `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
-      "Posso te ajudar com informacoes do atendimento e te orientar no agendamento.",
-      buildSchedulingCta(config)
+      "Posso te passar informacoes basicas e te direcionar para o agendamento.",
+      buildSchedulingCta(config, "E so acessar e escolher o melhor horario pra voce")
     ]);
   }
 
@@ -394,7 +394,7 @@ function buildFallbackMessage(config) {
   }
 
   if (isKiagendaBot(config)) {
-    return `Posso te ajudar com informacoes do atendimento e com o agendamento pelo sistema.\n\n${buildSchedulingCta(config, "E so acessar para ver os horarios disponiveis")}`;
+    return `Posso te ajudar com informacoes basicas e te direcionar para o agendamento.\n\n${buildSchedulingCta(config, "Fica bem mais facil agendar direto por aqui")}`;
   }
 
   return `Nao entendi sua mensagem. Responda com uma opcao do menu:\n${buildMenuMessage(config)}`;
