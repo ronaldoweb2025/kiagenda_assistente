@@ -1228,12 +1228,12 @@ function buildModelMessages(modelId) {
     loja_online: {
       welcome:
         `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-        "Posso te ajudar a ver produtos, acessar links de compra e falar com a equipe.",
+        "Posso te mostrar os produtos e te direcionar para o link de compra.",
       fallback:
-        "N\u00e3o entendi muito bem.\n\n" +
-        "Voc\u00ea pode pedir produtos, links ou atendimento.",
+        "Nao entendi totalmente sua mensagem.\n\n" +
+        "Voce pode pedir um produto, ver opcoes ou acessar um link de compra.",
       handoff:
-        `Perfeito! Vou encaminhar voc\u00ea para o ${attendantName} agora mesmo.`
+        `Se precisar, ${attendantName} pode continuar com voce.`
     },
     services_agendamento: {
       welcome:
@@ -1271,7 +1271,7 @@ function buildModelMessages(modelId) {
   if (modelId === "loja_online" && !hasLinks) {
     templates.loja_online.welcome =
       `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-      "Posso te ajudar com as categorias do seu menu e falar com a equipe para fechar seu pedido.";
+      "Posso te ajudar com os produtos cadastrados e te orientar no proximo passo da compra.";
   }
 
   if (modelId === "services_agendamento" && !hasLinks) {

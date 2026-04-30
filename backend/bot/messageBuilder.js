@@ -40,6 +40,11 @@ function isKiagendaBot(config) {
   return botModel === "kiagenda_servicos";
 }
 
+function isLojaOnlineBot(config) {
+  const botModel = String(config?.botModel || "").trim().toLowerCase();
+  return botModel === "loja_online";
+}
+
 function findSchedulingLink(config) {
   const links = Array.isArray(config?.links) ? config.links : [];
   const scoringTerms = ["agend", "agenda", "horar", "calend", "marcar"];
@@ -161,6 +166,14 @@ function buildWelcomeMessage(config) {
     ]);
   }
 
+  if (isLojaOnlineBot(config)) {
+    return joinBlocks([
+      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
+      "Posso te mostrar os produtos e te direcionar para o link de compra.",
+      buildMenuMessage(config)
+    ]);
+  }
+
   return joinBlocks([
     `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
     "Escolha uma opcao do menu:",
@@ -260,14 +273,25 @@ function buildCatalogListMessage(config, key, title, singularLabel) {
   return `Claro.\n\nEstas sao as opcoes de ${target.title.toLowerCase()}:\n\n${names.join("\n")}\n\nDigite o nome do ${target.singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
 }
 
-function buildCatalogItemMessage(item) {
+function buildCatalogItemMessage(configOrItem, maybeItem) {
+  const config = maybeItem ? configOrItem : null;
+  const item = maybeItem || configOrItem;
+  const isStoreBot = isLojaOnlineBot(config);
   const blocks = [
     item?.name || "Item sem nome",
     item?.description || "",
     item?.offer ? `Oferta: ${item.offer}` : "",
     item?.price ? `Preco: ${item.price}` : "",
-    item?.link ? `Saiba mais:\n${item.link}` : "",
-    "Se quiser, posso te encaminhar para atendimento."
+    item?.link
+      ? isStoreBot
+        ? `Voce pode ver mais detalhes ou comprar por aqui 👇\n${item.link}`
+        : `Saiba mais:\n${item.link}`
+      : "",
+    !item?.link && isStoreBot
+      ? "Se quiser, posso te direcionar para atendimento para te passar o link."
+      : !isStoreBot
+        ? "Se quiser, posso te encaminhar para atendimento."
+        : ""
   ];
 
   return joinBlocks(blocks);
@@ -397,6 +421,10 @@ function buildFallbackMessage(config) {
     return `Posso te ajudar com informacoes basicas e te direcionar para o agendamento.\n\n${buildSchedulingCta(config, "Fica bem mais facil agendar direto por aqui")}`;
   }
 
+  if (isLojaOnlineBot(config)) {
+    return "Posso te mostrar o produto, informar o preco se estiver cadastrado e te passar o link de compra.";
+  }
+
   return `Nao entendi sua mensagem. Responda com uma opcao do menu:\n${buildMenuMessage(config)}`;
 }
 
@@ -444,6 +472,7 @@ module.exports = {
   buildSchedulingCta,
   getServiceWorkflow,
   isKiagendaBot,
+  isLojaOnlineBot,
   buildWelcomeMessage,
   hasCustomerProfile
 };

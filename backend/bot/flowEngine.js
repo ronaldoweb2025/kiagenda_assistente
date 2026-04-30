@@ -22,6 +22,7 @@ const {
   getBotAdjustablePrompt,
   getServiceWorkflow,
   isKiagendaBot,
+  isLojaOnlineBot,
   hasCustomerProfile
 } = require("./messageBuilder");
 const { matchIntent } = require("./intentMatcher");
@@ -710,7 +711,7 @@ function tryResolveCatalogChoice({ state, message, config }) {
       intent: "detalhe_categoria_item",
       categoryId: catalogContext.category?.id || "",
       itemId: matches[0]?.id || "",
-      reply: isService ? buildServiceDetailMessage(config, matches[0]) : buildCatalogItemMessage(matches[0]),
+      reply: isService ? buildServiceDetailMessage(config, matches[0]) : buildCatalogItemMessage(config, matches[0]),
       mediaMessages,
       nextState: {
         currentState: "menu",
@@ -1476,7 +1477,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       reply = item
         ? serviceLike
           ? buildServiceDetailMessage(config, item)
-          : buildCatalogItemMessage(item)
+          : buildCatalogItemMessage(config, item)
         : category
           ? buildCatalogListMessage(config, category.id, category.name, serviceLike ? "servico" : "item")
           : buildMenuMessage(config);
