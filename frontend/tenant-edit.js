@@ -2408,7 +2408,25 @@ function renderCampaignQueue() {
   }
 
   dashboardElements.campaignQueueList.innerHTML = "";
-  const queueItems = Array.isArray(dashboardState.campaignsData?.queue) ? dashboardState.campaignsData.queue.slice(-10).reverse() : [];
+  const queueItems = Array.isArray(dashboardState.campaignsData?.queue)
+    ? [...dashboardState.campaignsData.queue]
+        .sort((left, right) => {
+          const priority = (status) => {
+            if (String(status || "") === "ready_to_send") return 0;
+            if (String(status || "") === "draft") return 1;
+            return 2;
+          };
+          const leftWaiting = priority(left.status);
+          const rightWaiting = priority(right.status);
+
+          if (leftWaiting !== rightWaiting) {
+            return leftWaiting - rightWaiting;
+          }
+
+          return Number(left.queueOrder || 0) - Number(right.queueOrder || 0);
+        })
+        .slice(0, 10)
+    : [];
 
   if (!queueItems.length) {
     dashboardElements.campaignQueueList.innerHTML = '<p class="empty-copy">Nenhum item na fila ainda.</p>';
@@ -2418,15 +2436,44 @@ function renderCampaignQueue() {
   queueItems.forEach((item) => {
     const card = document.createElement("article");
     card.className = "tenant-card admin-tenant-card";
+    const messageValue = String(item.personalizedMessage || "");
+    const isEditable = ["draft", "ready_to_send"].includes(String(item.status || ""));
     card.innerHTML = `
       <div>
         <h3>${KiagendaApp.escapeHtml(item.company || item.phone || "Lead")}</h3>
         <p><strong>Telefone:</strong> ${KiagendaApp.escapeHtml(item.phone || "-")}</p>
+        <p><strong>Posicao:</strong> ${KiagendaApp.escapeHtml(String(item.queueOrder || "-"))}</p>
         <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(item.status || "-")}</p>
-        <p><strong>Agendado para:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.scheduledFor || item.processing?.nextEligibleAt))}</p>
+        <p><strong>Horario real do envio:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.sentAt || item.scheduledFor))}</p>
         <p><strong>Motivo:</strong> ${KiagendaApp.escapeHtml(item.failureReason || "-")}</p>
+        <label class="full-width">
+          <strong>Mensagem revisavel</strong>
+          <textarea data-queue-message="${KiagendaApp.escapeHtml(item.queueId)}" ${isEditable ? "" : "readonly"}>${KiagendaApp.escapeHtml(messageValue)}</textarea>
+        </label>
       </div>
     `;
+
+    if (isEditable) {
+      const actions = document.createElement("div");
+      actions.className = "button-row";
+
+      const saveDraftButton = document.createElement("button");
+      saveDraftButton.type = "button";
+      saveDraftButton.className = "secondary-button";
+      saveDraftButton.textContent = "Salvar draft";
+      saveDraftButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "draft")));
+      actions.appendChild(saveDraftButton);
+
+      const readyButton = document.createElement("button");
+      readyButton.type = "button";
+      readyButton.className = "primary-button";
+      readyButton.textContent = "Marcar pronto";
+      readyButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "ready_to_send")));
+      actions.appendChild(readyButton);
+
+      card.appendChild(actions);
+    }
+
     dashboardElements.campaignQueueList.appendChild(card);
   });
 }
@@ -2468,7 +2515,7 @@ function renderCampaigns() {
   const enabled = isNinjaSendEnabled();
   const campaigns = Array.isArray(dashboardState.campaignsData?.campaigns) ? dashboardState.campaignsData.campaigns : [];
   const queueItems = Array.isArray(dashboardState.campaignsData?.queue) ? dashboardState.campaignsData.queue : [];
-  const activeQueueItems = queueItems.filter((item) => ["pending", "scheduled", "sending"].includes(String(item.status || "")));
+  const activeQueueItems = queueItems.filter((item) => ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || "")));
 
   dashboardElements.campaignFeatureStatus.textContent = enabled ? "Ativo" : "Indisponivel";
   dashboardElements.campaignDailyLimit.textContent = String(featureConfig.dailyLimit || 10);
@@ -3136,14 +3183,45 @@ async function refreshCampaignsPanel() {
   setFeedback("Fila Ninja Send atualizada com sucesso.");
 }
 
+async function updateCampaignDraftMessage(queueId, status) {
+  const textarea = document.querySelector(`[data-queue-message="${CSS.escape(queueId)}"]`);
+
+  if (!textarea) {
+    throw new Error("Nao foi possivel localizar a mensagem do lead para revisao.");
+  }
+
+  const response = await KiagendaApp.requestJson(
+    `/api/tenants/${dashboardState.tenantId}/campaigns/queue/${queueId}/draft-message`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        personalizedMessage: textarea.value,
+        status,
+        editor: "tenant_manual_review"
+      })
+    }
+  );
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(
+    status === "ready_to_send"
+      ? response.message || "Lead revisado e marcado como pronto para envio."
+      : response.message || "Rascunho atualizado com sucesso."
+  );
+}
+
 async function processCampaignWorkerNow() {
-  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/process`, {
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/dispatch-next`, {
     method: "POST"
   });
 
   await loadCampaignsData();
   renderAll();
-  setFeedback(response.message || "Worker executado com sucesso.");
+  setFeedback(response.message || "Proximo lead disparado com sucesso.");
 }
 
 async function cancelCampaign(campaignId) {

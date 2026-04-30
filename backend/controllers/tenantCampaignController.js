@@ -1,8 +1,10 @@
 const {
   cancelCampaign,
+  dispatchNextCampaignLead,
   getCampaigns,
   importCampaign,
   processCampaignQueue,
+  updateDraftMessage,
   updateCampaignAccess
 } = require("../campaigns/campaignService");
 
@@ -10,7 +12,7 @@ function buildImportSummary(store, tenantId) {
   const latestCampaign = store.campaigns[store.campaigns.length - 1];
   const queueItems = store.queue.filter((item) => item.campaignId === latestCampaign.campaignId);
   const blockedItems = queueItems.filter((item) => ["cancelled", "replied"].includes(item.status));
-  const acceptedItems = queueItems.filter((item) => item.status === "scheduled");
+  const acceptedItems = queueItems.filter((item) => item.status === "draft");
 
   return {
     tenantId,
@@ -64,6 +66,36 @@ async function postRunCampaignWorker(req, res, next) {
   }
 }
 
+async function postDispatchNextCampaignLead(req, res, next) {
+  try {
+    const result = await dispatchNextCampaignLead(req.params.tenantId);
+
+    res.json({
+      message: result.processed ? "Proximo lead disparado com sucesso." : "Nenhum lead foi disparado neste momento.",
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function patchDraftMessage(req, res, next) {
+  try {
+    const store = updateDraftMessage(req.params.tenantId, req.params.queueId, req.body || {});
+
+    res.json({
+      message: "Rascunho atualizado com sucesso.",
+      data: {
+        tenantId: req.params.tenantId,
+        queueId: req.params.queueId,
+        queue: store.queue
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function postCancelCampaign(req, res, next) {
   try {
     const store = cancelCampaign(req.params.tenantId, req.params.campaignId, String(req.body?.reason || "cancelled_by_admin"));
@@ -96,7 +128,9 @@ function putCampaignAccess(req, res, next) {
 
 module.exports = {
   getTenantCampaigns,
+  patchDraftMessage,
   postCancelCampaign,
+  postDispatchNextCampaignLead,
   postImportCampaign,
   postRunCampaignWorker,
   putCampaignAccess

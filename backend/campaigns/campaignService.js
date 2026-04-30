@@ -171,7 +171,9 @@ function buildCampaignRecord(tenant, payload, options = {}) {
     operationalWindow: settings.operationalWindow,
     totals: {
       total: payload.items.length,
-      pending: payload.items.length,
+      draft: payload.items.length,
+      ready_to_send: 0,
+      pending: 0,
       scheduled: 0,
       sending: 0,
       sent: 0,
@@ -275,7 +277,7 @@ function hasActiveQueueForPhone(store, phone) {
   return store.queue.some((item) => {
     return (
       normalizePhone(item.phone) === normalizedPhone &&
-      ["pending", "scheduled", "sending"].includes(String(item.status || ""))
+      ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || ""))
     );
   });
 }
@@ -293,6 +295,7 @@ function buildQueueItems(tenant, campaign, payload) {
       campaignId: campaign.campaignId,
       batchId: campaign.batchId,
       tenantId: tenant.tenantId,
+      queueOrder: index + 1,
       leadId: normalizeString(item.lead_id) || queueId,
       company: normalizeString(item.company),
       city: normalizeString(item.city),
@@ -300,12 +303,15 @@ function buildQueueItems(tenant, campaign, payload) {
       phone: normalizePhone(item.phone),
       personalizedMessage: normalizeString(item.personalized_message),
       sendMode: normalizeString(item.send_mode) || campaign.mode,
-      scheduledFor: resolveScheduledFor(baseDate, campaign.operationalWindow, item, scheduleHint),
+      scheduledFor: "",
       minDelayMinutes: normalizeInteger(item.min_delay_minutes, scheduleHint.minDelayMinutes, { min: 0, max: 180 }),
       maxDelayMinutes: normalizeInteger(item.max_delay_minutes, scheduleHint.maxDelayMinutes, { min: 0, max: 240 }),
       tags: normalizeTags(item.tags),
       metadata: item.metadata && typeof item.metadata === "object" ? item.metadata : {},
-      status: "scheduled",
+      scheduleSuggestion: {
+        suggestedFor: resolveScheduledFor(baseDate, campaign.operationalWindow, item, scheduleHint)
+      },
+      status: "draft",
       createdAt: campaign.createdAt,
       updatedAt: campaign.createdAt,
       lastAttemptAt: "",
@@ -318,7 +324,8 @@ function buildQueueItems(tenant, campaign, payload) {
         attempts: 0,
         lockToken: "",
         lockedAt: "",
-        nextEligibleAt: resolveScheduledFor(baseDate, campaign.operationalWindow, item, scheduleHint)
+        nextEligibleAt: "",
+        suggestedFor: resolveScheduledFor(baseDate, campaign.operationalWindow, item, scheduleHint)
       },
       safety: {
         duplicateBlocked: false,
@@ -382,6 +389,8 @@ function recalculateCampaignTotals(store, campaignId) {
   const queueItems = store.queue.filter((item) => item.campaignId === campaignId);
   const totals = {
     total: queueItems.length,
+    draft: 0,
+    ready_to_send: 0,
     pending: 0,
     scheduled: 0,
     sending: 0,
@@ -484,6 +493,72 @@ function getCampaigns(tenantId) {
   };
 }
 
+function updateDraftMessage(tenantId, queueId, payload = {}) {
+  const tenant = readTenant(tenantId);
+  ensureCampaignAccess(tenant);
+
+  return updateCampaignStore(tenantId, (store) => {
+    const queueItem = store.queue.find((item) => item.queueId === queueId);
+
+    if (!queueItem) {
+      const error = new Error("Item da fila nao encontrado.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const currentStatus = String(queueItem.status || "");
+
+    if (!["draft", "ready_to_send"].includes(currentStatus)) {
+      const error = new Error("Somente itens em draft ou ready_to_send podem ser revisados manualmente.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const nextMessage = normalizeString(payload.personalizedMessage ?? payload.personalized_message ?? queueItem.personalizedMessage);
+    const requestedStatus = normalizeString(payload.status || currentStatus).toLowerCase();
+
+    if (!nextMessage) {
+      const error = new Error("A mensagem do lead nao pode ficar vazia.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!["draft", "ready_to_send"].includes(requestedStatus)) {
+      const error = new Error("Status invalido para revisao manual.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    queueItem.personalizedMessage = nextMessage;
+    queueItem.status = requestedStatus;
+    queueItem.updatedAt = new Date().toISOString();
+    queueItem.failureReason = "";
+    queueItem.review = {
+      reviewedAt: queueItem.updatedAt,
+      lastEditor: normalizeString(payload.editor) || "tenant_manual_review"
+    };
+
+    appendLog(store, {
+      logId: createId("log"),
+      campaignId: queueItem.campaignId,
+      queueId: queueItem.queueId,
+      type: "draft_update",
+      level: "info",
+      createdAt: queueItem.updatedAt,
+      message: requestedStatus === "ready_to_send"
+        ? `Lead ${queueItem.company} revisado e marcado como pronto para envio.`
+        : `Rascunho do lead ${queueItem.company} atualizado manualmente.`,
+      details: {
+        status: requestedStatus
+      }
+    });
+
+    recalculateCampaignTotals(store, queueItem.campaignId);
+    store.meta.updatedAt = new Date().toISOString();
+    return store;
+  });
+}
+
 function countSentToday(store, timezone) {
   const currentDay = todayKey(timezone);
   return store.queue.filter((item) => item.status === "sent" && todayKey(timezone, new Date(item.sentAt || item.updatedAt)) === currentDay).length;
@@ -515,7 +590,7 @@ function markLeadReplied(tenantId, payload = {}) {
     store.queue.forEach((item) => {
       if (
         normalizePhone(item.phone) === phone &&
-        ["pending", "scheduled", "sending"].includes(String(item.status || ""))
+        ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || ""))
       ) {
         item.status = "replied";
         item.repliedAt = replyEntry.receivedAt;
@@ -548,7 +623,7 @@ function markLeadReplied(tenantId, payload = {}) {
 function cancelCampaign(tenantId, campaignId, reason = "cancelled_by_admin") {
   return updateCampaignStore(tenantId, (store) => {
     store.queue.forEach((item) => {
-      if (item.campaignId === campaignId && ["pending", "scheduled", "sending"].includes(item.status)) {
+      if (item.campaignId === campaignId && ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(item.status)) {
         item.status = "cancelled";
         item.cancelledAt = new Date().toISOString();
         item.updatedAt = item.cancelledAt;
@@ -579,6 +654,23 @@ function getNextDueQueueItem(store) {
     .sort((left, right) => new Date(left.processing?.nextEligibleAt || left.scheduledFor).getTime() - new Date(right.processing?.nextEligibleAt || right.scheduledFor).getTime());
 
   return dueItems[0] || null;
+}
+
+function getNextReadyToSendItem(store) {
+  return (
+    store.queue
+      .filter((item) => String(item.status || "") === "ready_to_send")
+      .sort((left, right) => {
+        const leftOrder = Number(left.queueOrder || 0);
+        const rightOrder = Number(right.queueOrder || 0);
+
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+
+        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+      })[0] || null
+  );
 }
 
 async function processTenantCampaignQueue(tenantId) {
@@ -762,6 +854,191 @@ async function processTenantCampaignQueue(tenantId) {
   }
 }
 
+async function dispatchNextCampaignLead(tenantId) {
+  const tenant = readTenant(tenantId);
+  const { getSession, sendTenantWhatsappMessage } = require("../bot/whatsappSessions");
+
+  if (!canUseFeature(tenant, "campaigns")) {
+    return {
+      tenantId,
+      processed: 0,
+      reason: "feature_locked"
+    };
+  }
+
+  const session = getSession(tenantId);
+  if (!session.connected || !session.runtimeReady) {
+    return {
+      tenantId,
+      processed: 0,
+      reason: "whatsapp_not_ready"
+    };
+  }
+
+  const store = readCampaignStore(tenantId);
+  const nextItem = getNextReadyToSendItem(store);
+
+  if (!nextItem) {
+    return {
+      tenantId,
+      processed: 0,
+      reason: "no_ready_to_send_items"
+    };
+  }
+
+  const campaign = store.campaigns.find((item) => item.campaignId === nextItem.campaignId);
+  const timezone = nextItem.timezone || campaign?.timezone || tenant.features.campaigns.timezone || DEFAULT_TIMEZONE;
+  const dailyLimit = campaign?.dailyLimit || tenant.features.campaigns.dailyLimit || DEFAULT_DAILY_LIMIT;
+
+  if (countSentToday(store, timezone) >= dailyLimit) {
+    return {
+      tenantId,
+      processed: 0,
+      reason: "daily_limit_reached"
+    };
+  }
+
+  if (hasRecentReply(store, nextItem.phone, tenant.features.campaigns.replyPauseHours)) {
+    markLeadReplied(tenantId, {
+      phone: nextItem.phone,
+      body: "",
+      receivedAt: new Date().toISOString(),
+      raw: {
+        source: "manual_dispatch_safety_pause"
+      }
+    });
+    return {
+      tenantId,
+      processed: 0,
+      reason: "reply_pause_triggered"
+    };
+  }
+
+  if (hasSentMessageToday(store, nextItem.phone, timezone)) {
+    await cancelQueueItem(tenantId, nextItem.queueId, "already_sent_today");
+    return {
+      tenantId,
+      processed: 0,
+      reason: "already_sent_today"
+    };
+  }
+
+  await updateCampaignStore(tenantId, (currentStore) => {
+    const queueItem = currentStore.queue.find((item) => item.queueId === nextItem.queueId);
+    if (!queueItem) {
+      return currentStore;
+    }
+
+    queueItem.status = "sending";
+    queueItem.updatedAt = new Date().toISOString();
+    queueItem.lastAttemptAt = queueItem.updatedAt;
+    queueItem.scheduledFor = queueItem.updatedAt;
+    queueItem.processing.attempts = normalizeInteger(queueItem.processing.attempts, 0, { min: 0, max: 99 }) + 1;
+    queueItem.processing.lockToken = createId("lock");
+    queueItem.processing.lockedAt = queueItem.updatedAt;
+    recalculateCampaignTotals(currentStore, queueItem.campaignId);
+    return currentStore;
+  });
+
+  try {
+    await sendTenantWhatsappMessage(tenantId, nextItem.phone, nextItem.personalizedMessage, {
+      purpose: "campanha_manual_ninja_send"
+    });
+
+    const sentAt = new Date().toISOString();
+
+    await updateCampaignStore(tenantId, (currentStore) => {
+      const queueItem = currentStore.queue.find((item) => item.queueId === nextItem.queueId);
+      if (!queueItem) {
+        return currentStore;
+      }
+
+      queueItem.status = "sent";
+      queueItem.sentAt = sentAt;
+      queueItem.scheduledFor = sentAt;
+      queueItem.updatedAt = sentAt;
+      queueItem.failureReason = "";
+      queueItem.processing.lockToken = "";
+      queueItem.processing.lockedAt = "";
+      queueItem.safety.dailyLimitDayKey = todayKey(queueItem.timezone || timezone);
+
+      appendHistory(currentStore, {
+        historyId: createId("history"),
+        tenantId,
+        phone: queueItem.phone,
+        direction: "outbound",
+        status: "sent",
+        createdAt: sentAt,
+        message: queueItem.personalizedMessage,
+        campaignId: queueItem.campaignId
+      });
+
+      appendLog(currentStore, {
+        logId: createId("log"),
+        campaignId: queueItem.campaignId,
+        queueId: queueItem.queueId,
+        type: "manual_send",
+        level: "info",
+        createdAt: sentAt,
+        message: `Lead do topo enviado manualmente para ${queueItem.company}.`,
+        details: {
+          phone: queueItem.phone,
+          queueOrder: queueItem.queueOrder
+        }
+      });
+
+      recalculateCampaignTotals(currentStore, queueItem.campaignId);
+      currentStore.meta.updatedAt = new Date().toISOString();
+      return currentStore;
+    });
+
+    return {
+      tenantId,
+      processed: 1,
+      reason: "sent",
+      queueId: nextItem.queueId
+    };
+  } catch (error) {
+    await updateCampaignStore(tenantId, (currentStore) => {
+      const queueItem = currentStore.queue.find((item) => item.queueId === nextItem.queueId);
+      if (!queueItem) {
+        return currentStore;
+      }
+
+      queueItem.status = "failed";
+      queueItem.updatedAt = new Date().toISOString();
+      queueItem.failureReason = String(error.message || error);
+      queueItem.processing.lockToken = "";
+      queueItem.processing.lockedAt = "";
+
+      appendLog(currentStore, {
+        logId: createId("log"),
+        campaignId: queueItem.campaignId,
+        queueId: queueItem.queueId,
+        type: "manual_send_error",
+        level: "error",
+        createdAt: queueItem.updatedAt,
+        message: "Falha ao disparar manualmente o proximo lead.",
+        details: {
+          phone: queueItem.phone,
+          error: queueItem.failureReason
+        }
+      });
+
+      recalculateCampaignTotals(currentStore, queueItem.campaignId);
+      currentStore.meta.updatedAt = new Date().toISOString();
+      return currentStore;
+    });
+
+    return {
+      tenantId,
+      processed: 0,
+      reason: "send_failed",
+      error: String(error.message || error)
+    };
+  }
+}
+
 function postponeQueueItem(tenantId, queueId, minutes, reason) {
   return updateCampaignStore(tenantId, (store) => {
     const queueItem = store.queue.find((item) => item.queueId === queueId);
@@ -851,12 +1128,14 @@ module.exports = {
   SAFE_OPERATION_END,
   SAFE_OPERATION_START,
   cancelCampaign,
+  dispatchNextCampaignLead,
   getCampaigns,
   importCampaign,
   markLeadReplied,
   normalizePhone,
   processCampaignQueue,
   ensureCampaignAccess,
+  updateDraftMessage,
   updateCampaignAccess,
   validatePhone
 };
