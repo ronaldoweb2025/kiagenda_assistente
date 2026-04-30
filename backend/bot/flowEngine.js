@@ -17,8 +17,11 @@ const {
   buildServiceDetailMessage,
   buildSpecificLinkMessage,
   buildWelcomeMessage,
+  buildSchedulingCta,
+  findSchedulingLink,
   getBotAdjustablePrompt,
   getServiceWorkflow,
+  isKiagendaBot,
   hasCustomerProfile
 } = require("./messageBuilder");
 const { matchIntent } = require("./intentMatcher");
@@ -225,6 +228,11 @@ function isInterestSignalMessage(message) {
   return ["quero", "gostei", "tenho interesse", "me interessa", "vamos seguir", "podemos seguir"].some((term) => text.includes(term));
 }
 
+function isScheduleIntentMessage(message) {
+  const text = normalizeText(message);
+  return ["agendar", "agendamento", "agenda", "horario", "horarios", "marcar"].some((term) => text.includes(term));
+}
+
 function buildBudgetRedirectMessage(config, service) {
   const instructions = String(getBotAdjustablePrompt(config)?.instrucoesNegocio || "").trim();
   const workflow = getServiceWorkflow(config);
@@ -249,6 +257,13 @@ function buildBudgetRedirectMessage(config, service) {
 }
 
 function buildInterestHandoffOfferMessage(config, service) {
+  if (isKiagendaBot(config)) {
+    return [
+      `Perfeito. Se voce quiser seguir com ${service?.name || "esse atendimento"}, o ideal e agendar direto pelo sistema.`,
+      buildSchedulingCta(config)
+    ].join("\n\n");
+  }
+
   const attendant = config.business?.attendantName || "atendimento";
   const workflow = getServiceWorkflow(config);
   const nextStep = String(workflow?.nextStep || "").toLowerCase();
@@ -897,6 +912,34 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
   const state = getState(tenantId, contactId, config.settings.stateTTL);
   const conversationState = getConversationState(state);
 
+  if (isKiagendaBot(config) && isScheduleIntentMessage(message)) {
+    const scheduleState = setState(
+      tenantId,
+      contactId,
+      {
+        currentState: "menu",
+        fallbackCount: 0,
+        handoffUntil: null,
+        lastBotMessageType: "kiagenda_schedule",
+        ...buildConversationStatePatch({
+          stage: conversationState.stage,
+          lastSuggestedService: conversationState.lastSuggestedService,
+          lastIntent: conversationState.lastIntent,
+          rejectedServices: conversationState.rejectedServices
+        })
+      },
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "agendamento_sistema",
+      reply: buildSchedulingCta(config),
+      state: scheduleState
+    };
+  }
+
   if (isResetContextMessage(message)) {
     const resetState = setState(
       tenantId,
@@ -1037,6 +1080,39 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         state: contextualState
       };
     }
+  }
+
+  if (isKiagendaBot(config) && conversationState.lastIntent === "servico" && conversationState.lastSuggestedService && isScheduleIntentMessage(message)) {
+    const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
+    const reply = [
+      activeService?.name ? `${activeService.name}` : "",
+      "O agendamento e feito direto pelo sistema para voce escolher o melhor horario disponivel.",
+      buildSchedulingCta(config)
+    ].filter(Boolean).join("\n\n");
+
+    const scheduleState = setState(
+      tenantId,
+      contactId,
+      {
+        currentState: "menu",
+        lastBotMessageType: "kiagenda_schedule",
+        ...buildConversationStatePatch({
+          stage: "context_active",
+          lastSuggestedService: activeService?.id || "",
+          lastIntent: "servico",
+          rejectedServices: conversationState.rejectedServices
+        })
+      },
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "agendamento_sistema",
+      reply,
+      state: scheduleState
+    };
   }
 
   if (conversationState.lastIntent === "servico" && conversationState.lastSuggestedService && isInterestSignalMessage(message)) {
@@ -1445,15 +1521,21 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       reply = buildDeliveryPickupMessage(config);
       break;
     case "atendimento_humano":
-      reply = buildHandoffMessage(config);
-      nextState.currentState = "handoff";
-      nextState.handoffUntil = Date.now() + config.settings.handoffTimeout * 60 * 1000;
-      nextState.conversationState = {
-        stage: "",
-        lastSuggestedService: "",
-        lastIntent: "",
-        rejectedServices: conversationState.rejectedServices
-      };
+      if (isKiagendaBot(config)) {
+        reply = buildSchedulingCta(config, "Voce pode ver os horarios disponiveis e agendar direto por aqui");
+        nextState.currentState = "menu";
+        nextState.handoffUntil = null;
+      } else {
+        reply = buildHandoffMessage(config);
+        nextState.currentState = "handoff";
+        nextState.handoffUntil = Date.now() + config.settings.handoffTimeout * 60 * 1000;
+        nextState.conversationState = {
+          stage: "",
+          lastSuggestedService: "",
+          lastIntent: "",
+          rejectedServices: conversationState.rejectedServices
+        };
+      }
       break;
     case "menu_customizado":
       reply = String(matchedIntent.customReply || "").trim() || buildFallbackMessage(config);

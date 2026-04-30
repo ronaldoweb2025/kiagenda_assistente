@@ -31,6 +31,10 @@ const BOT_MODEL_OPTIONS = {
     label: "Servicos / Agendamento",
     description: "Focado em apresentar servicos, orientar o cliente e facilitar o agendamento."
   },
+  kiagenda_servicos: {
+    label: "Bot KiAgenda",
+    description: "Focado em explicar o atendimento e levar o cliente para agendar sozinho pelo sistema."
+  },
   delivery: {
     label: "Delivery",
     description: "Focado em apresentar cardapio, links de pedido, entrega ou retirada e atendimento."
@@ -843,10 +847,11 @@ function normalizePanelBotModel(botModel) {
     case "kiagenda_delivery":
     case "delivery":
       return "delivery";
+    case "kiagenda_servicos":
+      return "kiagenda_servicos";
     case "barbearia":
     case "clinica":
     case "servicos_gerais":
-    case "kiagenda_servicos":
     case "services_agendamento":
       return "services_agendamento";
     case "custom":
@@ -1241,6 +1246,16 @@ function buildModelMessages(modelId) {
       handoff:
         `Perfeito! Vou chamar o ${attendantName} para continuar com voce.`
     },
+    kiagenda_servicos: {
+      welcome:
+        `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
+        "Posso te ajudar a entender o atendimento e te orientar no agendamento pelo sistema.",
+      fallback:
+        "Nao entendi totalmente sua mensagem.\n\n" +
+        "Posso te explicar o atendimento e te direcionar para o agendamento pelo sistema.",
+      handoff:
+        "Voce pode ver os horarios disponiveis e agendar direto pelo sistema."
+    },
     delivery: {
       welcome:
         `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
@@ -1265,6 +1280,12 @@ function buildModelMessages(modelId) {
       "Posso te mostrar as categorias cadastradas e falar com a equipe para ajudar com seu agendamento.";
   }
 
+  if (modelId === "kiagenda_servicos" && !hasLinks) {
+    templates.kiagenda_servicos.welcome =
+      `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
+      "Posso te explicar o atendimento e te orientar no uso do sistema de agendamento.";
+  }
+
   if (modelId === "delivery" && !hasLinks) {
     templates.delivery.welcome =
       `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
@@ -1277,6 +1298,10 @@ function buildModelMessages(modelId) {
 function buildBotOptionPreview(modelId) {
   const categories = getCatalogCategories();
   const hasLinks = dashboardState.tenant.links.length > 0;
+  const linkLabel = modelId === "kiagenda_servicos" ? "Agendamento pelo sistema" : "Links importantes";
+  const linkHint = modelId === "kiagenda_servicos"
+    ? "Leva o cliente para ver horarios e agendar direto no sistema."
+    : "Mostra links importantes do negocio.";
 
   return [
     ...categories.map((category) => ({
@@ -1287,13 +1312,13 @@ function buildBotOptionPreview(modelId) {
         : "Cadastre itens para ativar esta categoria."
     })),
     ...(hasLinks ? [{
-      label: "Links importantes",
+      label: linkLabel,
       available: true,
-      hint: "Mostra links importantes do negocio."
+      hint: linkHint
     }] : [{
-      label: "Links importantes",
+      label: linkLabel,
       available: false,
-      hint: "Cadastre links para ativar esta opcao."
+      hint: modelId === "kiagenda_servicos" ? "Cadastre o link do sistema de agendamento para ativar esta opcao." : "Cadastre links para ativar esta opcao."
     }]),
     {
       label: "Falar com atendimento",
@@ -1324,15 +1349,28 @@ function buildAutomaticMenu(modelId) {
   if (hasLinks) {
     items.push({
       id: "menu_links",
-      label: modelId === "delivery" ? "Links de pedido" : "Links importantes",
+      label: modelId === "delivery" ? "Links de pedido" : modelId === "kiagenda_servicos" ? "Agendar horario" : "Links importantes",
       type: "links",
       enabled: true,
       linkId: "",
-      aliases: modelId === "services_agendamento"
+      aliases: modelId === "kiagenda_servicos"
+        ? ["agendar", "agendamento", "agenda", "horarios", "marcar"]
+        : modelId === "services_agendamento"
         ? ["links", "agendamento", "agenda"]
         : modelId === "delivery"
           ? ["pedido", "links", "delivery"]
           : ["links", "site", "acesso"]
+    });
+  }
+
+  if (modelId === "kiagenda_servicos") {
+    items.push({
+      id: "menu_horarios",
+      label: "Horarios disponiveis",
+      type: "links",
+      enabled: true,
+      linkId: "",
+      aliases: ["horario", "horarios", "disponibilidade", "agenda"]
     });
   }
 
@@ -2694,8 +2732,8 @@ function syncFormToState() {
     model: canUseFeatureInPanel("ai") ? dashboardElements.geminiModel.value : "gemini-2.5-flash-lite"
   };
   dashboardState.tenant.botProfile = {
-    niche: "services",
-    promptMode: "services",
+    niche: dashboardState.tenant.botModel === "kiagenda_servicos" ? "kiagenda" : "services",
+    promptMode: dashboardState.tenant.botModel === "kiagenda_servicos" ? "kiagenda" : "services",
     promptBase: dashboardState.tenant.botProfile.promptBase || "",
     additionalInstructions: dashboardState.tenant.botProfile.additionalInstructions || "",
     aiMode: dashboardState.tenant.botProfile.aiMode || "balanced",

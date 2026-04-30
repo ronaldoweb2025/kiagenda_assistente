@@ -35,6 +35,45 @@ function isServicesBotProfile(config) {
   return niche === "services" || promptMode === "services" || botModel === "services_agendamento";
 }
 
+function isKiagendaBot(config) {
+  const botModel = String(config?.botModel || config?.integration?.kiagenda?.mode || "").trim().toLowerCase();
+  return botModel === "kiagenda_servicos";
+}
+
+function findSchedulingLink(config) {
+  const links = Array.isArray(config?.links) ? config.links : [];
+  const scoringTerms = ["agend", "agenda", "horar", "calend", "marcar"];
+  let bestLink = null;
+
+  links.forEach((link) => {
+    const rawText = [link?.title, link?.description, link?.url, ...(link?.aliases || [])].join(" ").toLowerCase();
+    const score = scoringTerms.reduce((total, term) => total + (rawText.includes(term) ? 1 : 0), 0);
+
+    if (score > 0 && (!bestLink || score > bestLink.score)) {
+      bestLink = {
+        score,
+        link
+      };
+    }
+  });
+
+  return bestLink?.link || null;
+}
+
+function buildSchedulingCta(config, intro = "Voce pode ver os horarios disponiveis e agendar direto por aqui") {
+  const schedulingLink = findSchedulingLink(config);
+
+  if (schedulingLink?.url) {
+    return `${intro} 👇\n${schedulingLink.url}`;
+  }
+
+  if (schedulingLink?.title) {
+    return `${intro} 👇\n${schedulingLink.title}`;
+  }
+
+  return `${intro}.`;
+}
+
 function getServiceClosingQuestion(config) {
   const focus = String(getBotAdjustablePrompt(config)?.focoAtendimento || "").toLowerCase();
   const nextStep = String(getServiceWorkflow(config)?.nextStep || "").toLowerCase();
@@ -111,6 +150,14 @@ function buildWelcomeMessage(config) {
       `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
       "Posso te ajudar a entender os servicos e organizar seu atendimento inicial.",
       buildMenuMessage(config)
+    ]);
+  }
+
+  if (isKiagendaBot(config)) {
+    return joinBlocks([
+      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
+      "Posso te ajudar com informacoes do atendimento e te orientar no agendamento.",
+      buildSchedulingCta(config)
     ]);
   }
 
@@ -255,6 +302,11 @@ function buildServiceDetailMessage(config, item, options = {}) {
     blocks.push(`Como funciona: ${workflow.serviceProcess}`);
   }
 
+  if (isKiagendaBot(config)) {
+    blocks.push(buildSchedulingCta(config, "Fica bem mais facil ver os horarios disponiveis e agendar por aqui"));
+    return joinBlocks(blocks);
+  }
+
   if (!shouldBeShort) {
     blocks.push(getServiceClosingQuestion(config));
   }
@@ -325,6 +377,10 @@ function buildHandoffMessage(config) {
     return `${getAttendantLabel(config)} vai continuar com voce e pode te orientar no proximo passo do atendimento.`;
   }
 
+  if (isKiagendaBot(config)) {
+    return buildSchedulingCta(config, "Voce pode seguir pelo sistema de agendamento por aqui");
+  }
+
   return `${getAttendantLabel(config)} vai continuar por aqui em instantes.`;
 }
 
@@ -335,6 +391,10 @@ function buildFallbackMessage(config) {
 
   if (isServicesBotProfile(config)) {
     return `Nao entendi totalmente sua mensagem ainda.\n\nPosso te mostrar os servicos, explicar um servico especifico ou te encaminhar para atendimento.`;
+  }
+
+  if (isKiagendaBot(config)) {
+    return `Posso te ajudar com informacoes do atendimento e com o agendamento pelo sistema.\n\n${buildSchedulingCta(config, "E so acessar para ver os horarios disponiveis")}`;
   }
 
   return `Nao entendi sua mensagem. Responda com uma opcao do menu:\n${buildMenuMessage(config)}`;
@@ -380,7 +440,10 @@ module.exports = {
   buildProfileCollectionRetryMessage,
   buildSpecificLinkMessage,
   getBotAdjustablePrompt,
+  findSchedulingLink,
+  buildSchedulingCta,
   getServiceWorkflow,
+  isKiagendaBot,
   buildWelcomeMessage,
   hasCustomerProfile
 };

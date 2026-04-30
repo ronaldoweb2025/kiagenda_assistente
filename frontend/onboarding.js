@@ -366,10 +366,10 @@ function buildStandardMenu(modelId) {
 function buildKiagendaMenu(modelId) {
   if (modelId === "kiagenda_servicos") {
     return [
-      { id: "menu_servicos", label: "Ver servicos", type: "services", enabled: true, linkId: "", aliases: [] },
-      { id: "menu_agendar", label: "Agendar horario", type: "links", enabled: true, linkId: "", aliases: [] },
-      { id: "menu_horarios", label: "Horarios disponiveis", type: "links", enabled: true, linkId: "", aliases: [] },
-      { id: "menu_atendimento", label: "Falar com atendimento", type: "handoff", enabled: true, linkId: "", aliases: [] }
+      { id: "menu_servicos", label: "Ver servicos", type: "services", enabled: true, linkId: "", aliases: ["servicos", "atendimento"] },
+      { id: "menu_agendar", label: "Agendar horario", type: "links", enabled: true, linkId: "", aliases: ["agendar", "agendamento", "agenda", "marcar"] },
+      { id: "menu_horarios", label: "Horarios disponiveis", type: "links", enabled: true, linkId: "", aliases: ["horario", "horarios", "disponibilidade"] },
+      { id: "menu_atendimento", label: "Falar com atendimento", type: "handoff", enabled: true, linkId: "", aliases: ["atendimento", "humano"] }
     ];
   }
 

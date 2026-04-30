@@ -466,7 +466,7 @@ async function handleIncomingWhatsappMessage(tenantId, client, msg) {
   const isAudioWithoutTranscript = msg.hasMedia && ["audio", "ptt"].includes(String(msg.type || "").toLowerCase()) && !String(msg.body || "").trim();
 
   if (isAudioWithoutTranscript) {
-    await sendHumanLikeMessage(client, msg, "Consigo te ajudar melhor por texto. Pode me mandar sua duvida escrita por aqui?");
+    await sendHumanLikeMessage(client, msg, "Consigo te ajudar melhor por texto 😊 pode me mandar sua duvida escrita por aqui?");
     return;
   }
 

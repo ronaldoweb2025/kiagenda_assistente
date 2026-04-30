@@ -29,6 +29,31 @@ const DEFAULT_BOT_MODEL_SETTINGS = {
     aiMode: "balanced",
     temperature: 0.4
   },
+  kiagenda: {
+    name: "Bot KiAgenda",
+    promptBase:
+      "Voce e um assistente de atendimento automatico via WhatsApp que ajuda o cliente a entender servicos e direciona para agendamento automatico atraves do sistema.\n\n" +
+      "Seu papel e entender o que o cliente deseja, explicar o servico ou atendimento, tirar duvidas basicas e incentivar sempre o uso do sistema de agendamento.\n\n" +
+      "Regras obrigatorias:\n" +
+      "- Nunca agende manualmente.\n" +
+      "- Nunca prometa horario especifico.\n" +
+      "- Nunca reserve horario.\n" +
+      "- Nunca negocie.\n" +
+      "- Nunca de desconto.\n" +
+      "- Nunca invente informacoes.\n" +
+      "- Nunca simule sistema interno.\n" +
+      "- Sempre que possivel, direcione para o link do sistema de agendamento.\n\n" +
+      "Comportamento:\n" +
+      "- linguagem simples e amigavel\n" +
+      "- respostas curtas e objetivas\n" +
+      "- nao ser insistente\n" +
+      "- falar de forma natural sobre o sistema\n" +
+      "- manter contexto do servico\n" +
+      "- finalizar com incentivo ao agendamento quando fizer sentido",
+    additionalInstructions: "",
+    aiMode: "balanced",
+    temperature: 0.4
+  },
   delivery: {
     name: "Bot Delivery",
     promptBase: "",
@@ -81,6 +106,7 @@ function normalizeModelConfig(input = {}, fallback = {}) {
 function normalizeBotModelSettings(input = {}) {
   return {
     services: normalizeModelConfig(input?.services, DEFAULT_BOT_MODEL_SETTINGS.services),
+    kiagenda: normalizeModelConfig(input?.kiagenda, DEFAULT_BOT_MODEL_SETTINGS.kiagenda),
     delivery: normalizeModelConfig(input?.delivery, DEFAULT_BOT_MODEL_SETTINGS.delivery),
     loja_online: normalizeModelConfig(input?.loja_online, DEFAULT_BOT_MODEL_SETTINGS.loja_online)
   };
@@ -105,6 +131,10 @@ function updateBotModelSettings(partialSettings = {}) {
     services: {
       ...current.services,
       ...(partialSettings?.services || {})
+    },
+    kiagenda: {
+      ...current.kiagenda,
+      ...(partialSettings?.kiagenda || {})
     },
     delivery: {
       ...current.delivery,

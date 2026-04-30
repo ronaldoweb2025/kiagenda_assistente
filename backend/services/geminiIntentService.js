@@ -44,6 +44,17 @@ function getServicesModelConfig() {
   return readBotModelSettings()?.services || {};
 }
 
+function getModelConfigForTenant(tenantConfig = {}) {
+  const settings = readBotModelSettings() || {};
+  const botModel = String(tenantConfig?.botModel || tenantConfig?.integration?.kiagenda?.mode || "").trim().toLowerCase();
+
+  if (botModel.startsWith("kiagenda")) {
+    return settings.kiagenda || {};
+  }
+
+  return settings.services || {};
+}
+
 function buildCatalogContext(tenantConfig = {}) {
   const categories = getActiveCatalogCategoriesWithItems(tenantConfig).map((category) => ({
     name: category.name,
@@ -108,7 +119,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}, runtimeContext
 
   const context = buildCatalogContext(tenantConfig);
   const workflow = tenantConfig?.botProfile?.serviceWorkflow || {};
-  const modelConfig = getServicesModelConfig();
+  const modelConfig = getModelConfigForTenant(tenantConfig);
   const runtimeSummary = [
     runtimeContext?.currentContext ? `Contexto atual: ${runtimeContext.currentContext}` : "",
     runtimeContext?.lastIntent ? `Ultima intencao: ${runtimeContext.lastIntent}` : "",

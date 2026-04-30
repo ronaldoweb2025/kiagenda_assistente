@@ -30,6 +30,17 @@ function getServicesModelConfig() {
   return readBotModelSettings()?.services || {};
 }
 
+function getModelConfigForTenant(tenantConfig = {}) {
+  const settings = readBotModelSettings() || {};
+  const botModel = String(tenantConfig?.botModel || tenantConfig?.integration?.kiagenda?.mode || "").trim().toLowerCase();
+
+  if (botModel.startsWith("kiagenda")) {
+    return settings.kiagenda || {};
+  }
+
+  return settings.services || {};
+}
+
 function buildRuntimeContext(runtimeContext = {}) {
   return [
     runtimeContext?.currentContext ? `Contexto atual: ${runtimeContext.currentContext}` : "",
@@ -73,7 +84,7 @@ async function detectIntentWithAI(message, tenantConfig = {}, runtimeContext = {
   const businessName = String(tenantConfig?.business?.name || "").trim();
   const businessType = String(tenantConfig?.business?.type || "").trim();
   const workflow = tenantConfig?.botProfile?.serviceWorkflow || {};
-  const modelConfig = getServicesModelConfig();
+  const modelConfig = getModelConfigForTenant(tenantConfig);
   const extraContext = buildRuntimeContext(runtimeContext);
 
   try {
