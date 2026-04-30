@@ -2,6 +2,7 @@ const adminState = {
   items: [],
   activationCodes: [],
   planSettings: {},
+  botModelSettings: {},
   editingTenantId: "",
   accessCodePreview: null,
   activationCodeStatusFilter: "all",
@@ -25,7 +26,8 @@ const adminElements = {
   activationCodeSearch: document.getElementById("activationCodeSearch"),
   activationCodePreview: document.getElementById("activationCodePreview"),
   activationCodesList: document.getElementById("activationCodesList"),
-  adminPlanSettingsList: document.getElementById("adminPlanSettingsList")
+  adminPlanSettingsList: document.getElementById("adminPlanSettingsList"),
+  adminBotModelSettingsList: document.getElementById("adminBotModelSettingsList")
 };
 
 function setFeedback(message) {
@@ -345,6 +347,73 @@ function renderPlanSettings() {
   });
 }
 
+function getBotModeLabel(mode) {
+  switch (String(mode || "").toLowerCase()) {
+    case "conservative":
+      return "Conservador";
+    case "expansive":
+      return "Mais explicativo";
+    default:
+      return "Equilibrado";
+  }
+}
+
+function renderBotModelSettings() {
+  adminElements.adminBotModelSettingsList.innerHTML = "";
+  const entries = Object.entries(adminState.botModelSettings || {});
+
+  if (!entries.length) {
+    adminElements.adminBotModelSettingsList.innerHTML = '<p class="empty-copy">Nenhum modelo carregado ainda.</p>';
+    return;
+  }
+
+  entries.forEach(([modelKey, modelConfig]) => {
+    const card = document.createElement("section");
+    card.className = "section-subcard";
+    card.innerHTML = `
+      <div class="section-subcard-header">
+        <div>
+          <h4>${KiagendaApp.escapeHtml(modelConfig.name || modelKey)}</h4>
+          <p class="muted-copy">Modo atual: ${KiagendaApp.escapeHtml(getBotModeLabel(modelConfig.aiMode))} | Temperatura: ${KiagendaApp.escapeHtml(String(modelConfig.temperature ?? 0.4))}</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        <label class="full-width">
+          Nome do modelo
+          <input type="text" data-model="${modelKey}" data-field="name" value="${KiagendaApp.escapeHtml(modelConfig.name || "")}">
+        </label>
+        <label>
+          Modo da IA
+          <select data-model="${modelKey}" data-field="aiMode">
+            <option value="conservative" ${modelConfig.aiMode === "conservative" ? "selected" : ""}>Conservador</option>
+            <option value="balanced" ${modelConfig.aiMode === "balanced" ? "selected" : ""}>Equilibrado</option>
+            <option value="expansive" ${modelConfig.aiMode === "expansive" ? "selected" : ""}>Mais explicativo</option>
+          </select>
+        </label>
+        <label>
+          Temperatura
+          <input type="number" min="0" max="0.5" step="0.1" data-model="${modelKey}" data-field="temperature" value="${KiagendaApp.escapeHtml(String(modelConfig.temperature ?? 0.4))}">
+        </label>
+        <label class="full-width">
+          Prompt base
+          <textarea data-model="${modelKey}" data-field="promptBase">${KiagendaApp.escapeHtml(modelConfig.promptBase || "")}</textarea>
+        </label>
+        <label class="full-width">
+          Instrucoes adicionais
+          <textarea data-model="${modelKey}" data-field="additionalInstructions">${KiagendaApp.escapeHtml(modelConfig.additionalInstructions || "")}</textarea>
+        </label>
+      </div>
+      <div class="button-row">
+        <button type="button" class="primary-button" data-model-save="${modelKey}">Salvar ${KiagendaApp.escapeHtml(modelConfig.name || modelKey)}</button>
+      </div>
+    `;
+
+    const saveButton = card.querySelector(`[data-model-save="${modelKey}"]`);
+    saveButton.addEventListener("click", () => runAction(() => saveBotModelSettings(modelKey, card)));
+    adminElements.adminBotModelSettingsList.appendChild(card);
+  });
+}
+
 function renderTenants() {
   adminElements.adminTenantsList.innerHTML = "";
   const visibleTenants = getVisibleAdminTenants();
@@ -492,6 +561,12 @@ async function loadPlanSettings() {
   renderPlanSettings();
 }
 
+async function loadBotModelSettings() {
+  const response = await KiagendaApp.requestJson("/api/admin/bot-model-settings");
+  adminState.botModelSettings = response.data || {};
+  renderBotModelSettings();
+}
+
 async function saveTenantPlan(tenantId, editorElement) {
   const plan = editorElement.querySelector('[data-role="plan"]').value;
   const subscriptionStatus = editorElement.querySelector('[data-role="subscriptionStatus"]').value;
@@ -567,6 +642,34 @@ async function savePlanSettings(planKey, editorElement) {
   setFeedback(response.message || `Plano ${getPlanLabel(planKey)} atualizado com sucesso.`);
 }
 
+function readBotModelSettingsFromEditor(modelKey, editorElement) {
+  const readField = (fieldName) => editorElement.querySelector(`[data-model="${modelKey}"][data-field="${fieldName}"]`);
+
+  return {
+    [modelKey]: {
+      name: readField("name").value.trim(),
+      aiMode: readField("aiMode").value,
+      temperature: Number(readField("temperature").value || 0.4),
+      promptBase: readField("promptBase").value.trim(),
+      additionalInstructions: readField("additionalInstructions").value.trim()
+    }
+  };
+}
+
+async function saveBotModelSettings(modelKey, editorElement) {
+  const response = await KiagendaApp.requestJson("/api/admin/bot-model-settings", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(readBotModelSettingsFromEditor(modelKey, editorElement))
+  });
+
+  adminState.botModelSettings = response.data || {};
+  renderBotModelSettings();
+  setFeedback(response.message || `Modelo ${modelKey} atualizado com sucesso.`);
+}
+
 async function createActivationCode() {
   const response = await KiagendaApp.requestJson("/api/auth/admin-access-code", {
     method: "POST",
@@ -623,7 +726,7 @@ async function handleLogin(event) {
 
   setAdminView(true);
   setFeedback("Acesso admin liberado.");
-  await Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings()]);
+  await Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings(), loadBotModelSettings()]);
 }
 
 function logout() {
@@ -659,7 +762,7 @@ adminElements.activationCodeSearch.addEventListener("input", () => {
 
 if (ensureAdminAccess()) {
   setAdminView(true);
-  Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings()]).catch(() => {
+  Promise.all([loadTenants(), loadActivationCodes(), loadPlanSettings(), loadBotModelSettings()]).catch(() => {
     setFeedback("Nao foi possivel carregar os dados do admin.");
   });
 } else {

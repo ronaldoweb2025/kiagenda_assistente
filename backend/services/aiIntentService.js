@@ -2,6 +2,7 @@ const ALLOWED_INTENTS = ["produtos", "servicos", "parcerias", "links", "atendime
 const DEFAULT_CONFIDENCE = 0;
 const MIN_CONFIDENCE = 0.7;
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
+const { readBotModelSettings } = require("../tenancy/botModelSettingsStore");
 
 function normalizeIntent(value) {
   const normalizedValue = String(value || "").trim().toLowerCase();
@@ -23,6 +24,18 @@ function buildFallbackResult() {
     intent: "fora_do_escopo",
     confidence: DEFAULT_CONFIDENCE
   };
+}
+
+function getServicesModelConfig() {
+  return readBotModelSettings()?.services || {};
+}
+
+function buildRuntimeContext(runtimeContext = {}) {
+  return [
+    runtimeContext?.currentContext ? `Contexto atual: ${runtimeContext.currentContext}` : "",
+    runtimeContext?.lastIntent ? `Ultima intencao: ${runtimeContext.lastIntent}` : "",
+    runtimeContext?.lastServiceName ? `Ultimo servico identificado: ${runtimeContext.lastServiceName}` : ""
+  ].filter(Boolean).join("\n");
 }
 
 function extractOutputText(payload = {}) {
@@ -49,7 +62,7 @@ function extractOutputText(payload = {}) {
   return "";
 }
 
-async function detectIntentWithAI(message, tenantConfig = {}) {
+async function detectIntentWithAI(message, tenantConfig = {}, runtimeContext = {}) {
   const trimmedMessage = String(message || "").trim();
   const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
 
@@ -59,6 +72,9 @@ async function detectIntentWithAI(message, tenantConfig = {}) {
 
   const businessName = String(tenantConfig?.business?.name || "").trim();
   const businessType = String(tenantConfig?.business?.type || "").trim();
+  const workflow = tenantConfig?.botProfile?.serviceWorkflow || {};
+  const modelConfig = getServicesModelConfig();
+  const extraContext = buildRuntimeContext(runtimeContext);
 
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -69,14 +85,16 @@ async function detectIntentWithAI(message, tenantConfig = {}) {
       },
       body: JSON.stringify({
         model: DEFAULT_MODEL,
+        temperature: Number(modelConfig.temperature || tenantConfig?.botProfile?.aiTemperature || 0.4),
         max_output_tokens: 120,
         input: [
           {
             role: "system",
             content:
-              "Voce classifica mensagens de WhatsApp para um bot comercial. " +
+              "Voce classifica mensagens de WhatsApp para um bot de servicos. " +
               "Responda apenas com JSON no schema fornecido. " +
               "Nunca invente dados do negocio. " +
+              `${String(modelConfig.promptBase || "").trim() ? `Considere estas regras do modelo:\n${String(modelConfig.promptBase).trim()}\n` : ""}` +
               "Escolha apenas uma intencao entre: produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
               "Use fora_do_escopo quando houver ambiguidade, baixa certeza ou assunto fora dessas categorias."
           },
@@ -86,6 +104,10 @@ async function detectIntentWithAI(message, tenantConfig = {}) {
               `Mensagem do cliente: "${trimmedMessage}"\n` +
               `Negocio: ${businessName || "Nao informado"}\n` +
               `Tipo de negocio: ${businessType || "Nao informado"}\n` +
+              `Como funciona o atendimento: ${String(workflow.serviceProcess || tenantConfig?.business?.description || "").trim() || "Nao informado"}\n` +
+              `Como funciona o orcamento: ${String(workflow.budgetMode || "").trim() || "Nao informado"}\n` +
+              `Regras do negocio: ${String(workflow.notes || tenantConfig?.botProfile?.adjustablePrompt?.instrucoesNegocio || "").trim() || "Nao informado"}\n` +
+              `${extraContext ? `${extraContext}\n` : ""}` +
               "Classifique apenas a intencao do cliente."
           }
         ],

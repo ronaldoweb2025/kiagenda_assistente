@@ -77,6 +77,12 @@ const dashboardElements = {
   geminiConfigCard: document.getElementById("geminiConfigCard"),
   geminiApiKey: document.getElementById("geminiApiKey"),
   geminiModel: document.getElementById("geminiModel"),
+  botEstiloAtendimento: document.getElementById("botEstiloAtendimento"),
+  botTomDeVoz: document.getElementById("botTomDeVoz"),
+  botNivelDetalhe: document.getElementById("botNivelDetalhe"),
+  botFocoAtendimento: document.getElementById("botFocoAtendimento"),
+  botInstrucoesNegocio: document.getElementById("botInstrucoesNegocio"),
+  botRegrasPersonalizadas: document.getElementById("botRegrasPersonalizadas"),
   aiLockedNotice: document.getElementById("aiLockedNotice"),
   botPlanLockCard: document.getElementById("botPlanLockCard"),
   botStatusDescription: document.getElementById("botStatusDescription"),
@@ -190,6 +196,19 @@ const dashboardElements = {
   attendantName: document.getElementById("attendantName"),
   businessType: document.getElementById("businessType"),
   businessDescription: document.getElementById("businessDescription"),
+  serviceAttendanceType: document.getElementById("serviceAttendanceType"),
+  serviceProcess: document.getElementById("serviceProcess"),
+  serviceBudgetMode: document.getElementById("serviceBudgetMode"),
+  servicePriceDisplayMode: document.getElementById("servicePriceDisplayMode"),
+  serviceNextStep: document.getElementById("serviceNextStep"),
+  serviceNextStepDetails: document.getElementById("serviceNextStepDetails"),
+  ruleNoNegotiate: document.getElementById("ruleNoNegotiate"),
+  ruleNoDiscount: document.getElementById("ruleNoDiscount"),
+  ruleNoCloseSale: document.getElementById("ruleNoCloseSale"),
+  ruleNoPromiseDeadline: document.getElementById("ruleNoPromiseDeadline"),
+  ruleNoFinalPriceWithoutAnalysis: document.getElementById("ruleNoFinalPriceWithoutAnalysis"),
+  ruleNoInventInfo: document.getElementById("ruleNoInventInfo"),
+  serviceWorkflowNotes: document.getElementById("serviceWorkflowNotes"),
   settingsPlanDescription: document.getElementById("settingsPlanDescription"),
   settingsUpgradeButton: document.getElementById("settingsUpgradeButton"),
   googleAccountAvatar: document.getElementById("googleAccountAvatar"),
@@ -1120,9 +1139,59 @@ function getAttendantName() {
   return dashboardState.tenant.business.attendantName || "Atendimento";
 }
 
+function ensureBotProfileState() {
+  dashboardState.tenant.botProfile = dashboardState.tenant.botProfile || {};
+  dashboardState.tenant.botProfile.niche = dashboardState.tenant.botProfile.niche || "services";
+  dashboardState.tenant.botProfile.promptMode = dashboardState.tenant.botProfile.promptMode || "services";
+  dashboardState.tenant.botProfile.promptBase = dashboardState.tenant.botProfile.promptBase || "";
+  dashboardState.tenant.botProfile.additionalInstructions = dashboardState.tenant.botProfile.additionalInstructions || "";
+  dashboardState.tenant.botProfile.aiMode = dashboardState.tenant.botProfile.aiMode || "balanced";
+  dashboardState.tenant.botProfile.aiTemperature = Number.isFinite(Number(dashboardState.tenant.botProfile.aiTemperature))
+    ? Number(dashboardState.tenant.botProfile.aiTemperature)
+    : 0.4;
+  dashboardState.tenant.botProfile.adjustablePrompt = {
+    estiloAtendimento: "consultivo e profissional",
+    tomDeVoz: "simples e direto",
+    nivelDetalhe: "equilibrado",
+    focoAtendimento: "entender a necessidade e direcionar para atendimento humano",
+    instrucoesNegocio: "",
+    regrasPersonalizadas: "",
+    ...(dashboardState.tenant.botProfile.adjustablePrompt || {})
+  };
+  dashboardState.tenant.botProfile.serviceWorkflow = {
+    attendanceType: "online",
+    serviceProcess: "",
+    budgetMode: "custom",
+    priceDisplayMode: "registered_only",
+    nextStep: "human_whatsapp",
+    nextStepDetails: "",
+    blockedActions: {
+      noNegotiate: true,
+      noDiscount: true,
+      noCloseSale: true,
+      noPromiseDeadline: true,
+      noFinalPriceWithoutAnalysis: true,
+      noInventInfo: true
+    },
+    notes: "",
+    ...(dashboardState.tenant.botProfile.serviceWorkflow || {}),
+    blockedActions: {
+      noNegotiate: true,
+      noDiscount: true,
+      noCloseSale: true,
+      noPromiseDeadline: true,
+      noFinalPriceWithoutAnalysis: true,
+      noInventInfo: true,
+      ...((dashboardState.tenant.botProfile.serviceWorkflow && dashboardState.tenant.botProfile.serviceWorkflow.blockedActions) || {})
+    }
+  };
+}
+
 function buildModelMessages(modelId) {
   const businessName = getBusinessName();
   const attendantName = getAttendantName();
+  ensureBotProfileState();
+  const promptConfig = dashboardState.tenant.botProfile.adjustablePrompt;
   const activeCategories = getCatalogCategories().filter((category) => category.enabled !== false && Array.isArray(category.items) && category.items.length > 0);
   const categoryMenuLines = activeCategories
     .map((category) => `• ${category.name} (digite: ${(category.keywords || [category.name])[0] || category.name})`)
@@ -1164,12 +1233,13 @@ function buildModelMessages(modelId) {
     services_agendamento: {
       welcome:
         `Ol\u00e1! Bem-vindo ao ${businessName}.\n\n` +
-        "Posso te mostrar servicos, orientar seu agendamento e falar com a equipe.",
+        `Posso te ajudar a entender os servicos, explicar como funciona o atendimento e te direcionar para ${attendantName} quando fizer sentido.\n\n` +
+        `Estilo atual: ${promptConfig.estiloAtendimento}.`,
       fallback:
-        "N\u00e3o entendi muito bem.\n\n" +
-        "Voc\u00ea pode pedir servicos, links ou atendimento.",
+        "Nao entendi totalmente sua mensagem.\n\n" +
+        "Voce pode pedir servicos, tirar uma duvida ou pedir atendimento.",
       handoff:
-        `Perfeito! Vou chamar o ${attendantName} para continuar com voc\u00ea.`
+        `Perfeito! Vou chamar o ${attendantName} para continuar com voce.`
     },
     delivery: {
       welcome:
@@ -1346,6 +1416,8 @@ function toggleAdvancedMenu(forceOpen) {
 }
 
 function getEffectiveMessages() {
+  ensureBotProfileState();
+
   if (dashboardState.tenant.botModel === "custom") {
     return {
       welcome: dashboardState.tenant.messages.welcome || buildModelMessages("standard").welcome,
@@ -1359,6 +1431,36 @@ function getEffectiveMessages() {
     ...buildModelMessages(dashboardState.tenant.botModel),
     audio: dashboardState.tenant.messages.audio || null
   };
+}
+
+function renderBotProfileFields() {
+  ensureBotProfileState();
+  const prompt = dashboardState.tenant.botProfile.adjustablePrompt;
+  dashboardElements.botEstiloAtendimento.value = prompt.estiloAtendimento || "";
+  dashboardElements.botTomDeVoz.value = prompt.tomDeVoz || "";
+  dashboardElements.botNivelDetalhe.value = prompt.nivelDetalhe || "";
+  dashboardElements.botFocoAtendimento.value = prompt.focoAtendimento || "";
+  dashboardElements.botInstrucoesNegocio.value = prompt.instrucoesNegocio || "";
+  dashboardElements.botRegrasPersonalizadas.value = prompt.regrasPersonalizadas || "";
+}
+
+function renderServiceWorkflowFields() {
+  ensureBotProfileState();
+  const workflow = dashboardState.tenant.botProfile.serviceWorkflow;
+  const blockedActions = workflow.blockedActions || {};
+  dashboardElements.serviceAttendanceType.value = workflow.attendanceType || "online";
+  dashboardElements.serviceProcess.value = workflow.serviceProcess || "";
+  dashboardElements.serviceBudgetMode.value = workflow.budgetMode || "custom";
+  dashboardElements.servicePriceDisplayMode.value = workflow.priceDisplayMode || "registered_only";
+  dashboardElements.serviceNextStep.value = workflow.nextStep || "human_whatsapp";
+  dashboardElements.serviceNextStepDetails.value = workflow.nextStepDetails || "";
+  dashboardElements.ruleNoNegotiate.checked = blockedActions.noNegotiate !== false;
+  dashboardElements.ruleNoDiscount.checked = blockedActions.noDiscount !== false;
+  dashboardElements.ruleNoCloseSale.checked = blockedActions.noCloseSale !== false;
+  dashboardElements.ruleNoPromiseDeadline.checked = blockedActions.noPromiseDeadline !== false;
+  dashboardElements.ruleNoFinalPriceWithoutAnalysis.checked = blockedActions.noFinalPriceWithoutAnalysis !== false;
+  dashboardElements.ruleNoInventInfo.checked = blockedActions.noInventInfo !== false;
+  dashboardElements.serviceWorkflowNotes.value = workflow.notes || "";
 }
 
 function resetMessageEditors() {
@@ -2082,6 +2184,7 @@ function renderWhatsapp() {
 }
 
 function renderBot() {
+  ensureBotProfileState();
   const modelId = dashboardState.tenant.botModel || "standard";
   const messages = getEffectiveMessages();
   const autoMenuPreview = buildBotOptionPreview(modelId);
@@ -2104,6 +2207,7 @@ function renderBot() {
   dashboardElements.welcomePreview.textContent = messages.welcome || "-";
   dashboardElements.fallbackPreview.textContent = messages.fallback || "-";
   dashboardElements.handoffPreview.textContent = messages.handoff || "-";
+  renderBotProfileFields();
 
   dashboardElements.botMenuPreview.innerHTML = "";
   autoMenuPreview.forEach((item) => {
@@ -2185,6 +2289,7 @@ function renderLinks() {
 }
 
 function renderSettings() {
+  ensureBotProfileState();
   dashboardElements.tenantId.value = dashboardState.tenant.tenantId;
   dashboardElements.tenantActive.value = String(getBotEnabled());
   dashboardElements.businessName.value = dashboardState.tenant.business.name || "";
@@ -2200,6 +2305,7 @@ function renderSettings() {
     "hidden-view",
     dashboardElements.menuType.value !== "customReply"
   );
+  renderServiceWorkflowFields();
   renderGoogleConnectionStatus();
   toggleAdvancedMenu(dashboardState.advancedMenuOpen);
   renderMenuList();
@@ -2568,6 +2674,7 @@ function addAdvancedMenuItem() {
 }
 
 function syncFormToState() {
+  ensureBotProfileState();
   dashboardState.tenant.active = dashboardElements.tenantActive.value === "true";
   dashboardState.tenant.botEnabled = dashboardElements.tenantActive.value === "true";
   dashboardState.tenant.aiEnabled = canUseFeatureInPanel("ai")
@@ -2585,6 +2692,39 @@ function syncFormToState() {
   dashboardState.tenant.integration.gemini = {
     apiKey: canUseFeatureInPanel("ai") ? dashboardElements.geminiApiKey.value.trim() : "",
     model: canUseFeatureInPanel("ai") ? dashboardElements.geminiModel.value : "gemini-2.5-flash-lite"
+  };
+  dashboardState.tenant.botProfile = {
+    niche: "services",
+    promptMode: "services",
+    promptBase: dashboardState.tenant.botProfile.promptBase || "",
+    additionalInstructions: dashboardState.tenant.botProfile.additionalInstructions || "",
+    aiMode: dashboardState.tenant.botProfile.aiMode || "balanced",
+    aiTemperature: Number(dashboardState.tenant.botProfile.aiTemperature || 0.4),
+    adjustablePrompt: {
+      estiloAtendimento: dashboardElements.botEstiloAtendimento.value.trim(),
+      tomDeVoz: dashboardElements.botTomDeVoz.value.trim(),
+      nivelDetalhe: dashboardElements.botNivelDetalhe.value.trim(),
+      focoAtendimento: dashboardElements.botFocoAtendimento.value.trim(),
+      instrucoesNegocio: dashboardElements.botInstrucoesNegocio.value.trim(),
+      regrasPersonalizadas: dashboardElements.botRegrasPersonalizadas.value.trim()
+    },
+    serviceWorkflow: {
+      attendanceType: dashboardElements.serviceAttendanceType.value,
+      serviceProcess: dashboardElements.serviceProcess.value.trim(),
+      budgetMode: dashboardElements.serviceBudgetMode.value,
+      priceDisplayMode: dashboardElements.servicePriceDisplayMode.value,
+      nextStep: dashboardElements.serviceNextStep.value,
+      nextStepDetails: dashboardElements.serviceNextStepDetails.value.trim(),
+      blockedActions: {
+        noNegotiate: Boolean(dashboardElements.ruleNoNegotiate.checked),
+        noDiscount: Boolean(dashboardElements.ruleNoDiscount.checked),
+        noCloseSale: Boolean(dashboardElements.ruleNoCloseSale.checked),
+        noPromiseDeadline: Boolean(dashboardElements.ruleNoPromiseDeadline.checked),
+        noFinalPriceWithoutAnalysis: Boolean(dashboardElements.ruleNoFinalPriceWithoutAnalysis.checked),
+        noInventInfo: Boolean(dashboardElements.ruleNoInventInfo.checked)
+      },
+      notes: dashboardElements.serviceWorkflowNotes.value.trim()
+    }
   };
 }
 
@@ -2614,6 +2754,7 @@ function buildPayload() {
     advancedOptions: dashboardState.tenant.advancedOptions || [],
     menu: buildAutomaticMenu(dashboardState.tenant.botModel),
     messages: getEffectiveMessages(),
+    botProfile: dashboardState.tenant.botProfile,
     settings: { ...dashboardState.tenant.settings },
     integration: dashboardState.tenant.integration
   };
@@ -2868,6 +3009,7 @@ async function loadDashboard() {
   dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
   dashboardState.tenant.categories = Array.isArray(tenant.categories) ? tenant.categories : [];
   dashboardState.tenant.partnerships = Array.isArray(tenant.partnerships) ? tenant.partnerships : [];
+  dashboardState.tenant.botProfile = tenant.botProfile || null;
   dashboardState.tenant.botEnabled = tenant.botEnabled !== false;
   dashboardState.tenant.aiEnabled = tenant.aiEnabled !== false;
   dashboardState.tenant.plan = tenant.plan || "essential";

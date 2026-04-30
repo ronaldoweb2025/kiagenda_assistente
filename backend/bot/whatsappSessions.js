@@ -332,6 +332,10 @@ function shouldIgnoreMessage(msg) {
     return true;
   }
 
+  if (msg.hasMedia && ["audio", "ptt"].includes(String(msg.type || "").toLowerCase())) {
+    return false;
+  }
+
   if (!String(msg.body || "").trim()) {
     return true;
   }
@@ -459,6 +463,13 @@ async function handleIncomingWhatsappMessage(tenantId, client, msg) {
   }
 
   const tenant = readTenant(tenantId);
+  const isAudioWithoutTranscript = msg.hasMedia && ["audio", "ptt"].includes(String(msg.type || "").toLowerCase()) && !String(msg.body || "").trim();
+
+  if (isAudioWithoutTranscript) {
+    await sendHumanLikeMessage(client, msg, "Consigo te ajudar melhor por texto. Pode me mandar sua duvida escrita por aqui?");
+    return;
+  }
+
   const result = await processIncomingMessage({
     tenantId,
     contactId: getContactIdFromMessage(msg),

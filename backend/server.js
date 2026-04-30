@@ -8,6 +8,7 @@ const tenantAdminRoutes = require("./routes/tenantAdminRoutes");
 const tenantRuntimeRoutes = require("./routes/tenantRuntimeRoutes");
 const { passport } = require("./auth/googleAuth");
 const { bootstrapPlanSettingsStore } = require("./tenancy/planSettingsStore");
+const { bootstrapBotModelSettingsStore } = require("./tenancy/botModelSettingsStore");
 const { bootstrapTenantConfigStore } = require("./tenancy/tenantConfigStore");
 const { bootstrapTenantSessionStore } = require("./tenancy/tenantSessionStore");
 const { bootstrapTenantStateStore } = require("./tenancy/tenantStateStore");
@@ -21,6 +22,7 @@ bootstrapTenantConfigStore();
 bootstrapTenantSessionStore();
 bootstrapTenantStateStore();
 bootstrapPlanSettingsStore();
+bootstrapBotModelSettingsStore();
 
 app.use(
   session({

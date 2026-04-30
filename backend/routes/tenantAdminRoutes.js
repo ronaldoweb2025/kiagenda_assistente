@@ -1,11 +1,13 @@
 const express = require("express");
 const {
   deleteTenant,
+  getAdminBotModelSettings,
   getAdminPlanSettings,
   getTenantById,
   getTenants,
   postRestoreTenantBackup,
   postTenant,
+  putAdminBotModelSettings,
   putAdminPlanSettings,
   putTenant
 } = require("../controllers/tenantAdminController");
@@ -16,6 +18,8 @@ router.get("/api/tenants", getTenants);
 router.post("/api/tenants", postTenant);
 router.get("/api/admin/plan-settings", getAdminPlanSettings);
 router.put("/api/admin/plan-settings", putAdminPlanSettings);
+router.get("/api/admin/bot-model-settings", getAdminBotModelSettings);
+router.put("/api/admin/bot-model-settings", putAdminBotModelSettings);
 router.post("/api/admin/tenants/:tenantId/restore-backup", postRestoreTenantBackup);
 router.get("/api/tenants/:tenantId", getTenantById);
 router.put("/api/tenants/:tenantId", putTenant);

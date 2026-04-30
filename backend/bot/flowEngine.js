@@ -14,8 +14,11 @@ const {
   buildPersonalizedMenuMessage,
   buildProfileCollectionPrompt,
   buildProfileCollectionRetryMessage,
+  buildServiceDetailMessage,
   buildSpecificLinkMessage,
   buildWelcomeMessage,
+  getBotAdjustablePrompt,
+  getServiceWorkflow,
   hasCustomerProfile
 } = require("./messageBuilder");
 const { matchIntent } = require("./intentMatcher");
@@ -146,30 +149,53 @@ function isServiceContextQuestion(message) {
   );
 }
 
-function buildServiceContextReply(service, message) {
+function buildServiceContextReply(config, service, message) {
   const text = normalizeText(message);
+  const workflow = getServiceWorkflow(config);
 
   if (!service) {
     return "";
   }
 
   if (text.includes("quanto custa") || text.includes("preco") || text.includes("valor")) {
-    return service.price
-      ? `${service.name}\n\nO valor e ${service.price}.\n\nSe quiser, posso te explicar melhor ou te encaminhar para atendimento.`
-      : `${service.name}\n\nAinda nao tenho o valor cadastrado aqui.\n\nSe quiser, posso te encaminhar para atendimento.`;
+    if (workflow?.priceDisplayMode === "do_not_inform") {
+      return `${service.name}\n\nOs valores desse servico sao tratados no atendimento.\n\nPosso te explicar melhor como funciona ou te encaminhar para atendimento.`;
+    }
+
+    if (service.price) {
+      return workflow?.priceDisplayMode === "starting_at_only"
+        ? `${service.name}\n\nO valor comeca a partir de ${service.price}.\n\nPosso te explicar melhor como funciona ou te encaminhar para atendimento.`
+        : `${service.name}\n\nO valor e ${service.price}.\n\nPosso te explicar melhor como funciona ou te encaminhar para atendimento.`;
+    }
+
+    return [
+      `${service.name}`,
+      "Esse servico e personalizado e o valor depende do que voce precisa.",
+      workflow?.serviceProcess ? `Como funciona: ${workflow.serviceProcess}` : "",
+      "O ideal e falar com o responsavel para entender melhor o projeto antes de passar um orcamento."
+    ].filter(Boolean).join("\n\n");
   }
 
   if (text.includes("como funciona") || text.includes("como e") || text.includes("explica")) {
-    return service.description
-      ? `${service.name}\n\n${service.description}\n\nSe quiser, posso te passar mais detalhes ou te encaminhar para atendimento.`
-      : `${service.name}\n\nPosso te encaminhar para atendimento para te explicar melhor como funciona.`;
+    return [
+      service.name,
+      service.description || "",
+      workflow?.serviceProcess ? `Como funciona o atendimento: ${workflow.serviceProcess}` : "",
+      "Se quiser, posso te passar mais detalhes ou te encaminhar para atendimento."
+    ].filter(Boolean).join("\n\n");
   }
 
   if (text.includes("tem mais") || text.includes("mais info") || text.includes("mais detalhes")) {
     const blocks = [
       service.name,
       service.description || "",
-      service.price ? `Preco: ${service.price}` : "",
+      service.price && workflow?.priceDisplayMode !== "do_not_inform"
+        ? workflow?.priceDisplayMode === "starting_at_only"
+          ? `Valor a partir de ${service.price}`
+          : `Preco: ${service.price}`
+        : "",
+      !service.price ? "Valor sob consulta." : "",
+      workflow?.serviceProcess ? `Como funciona: ${workflow.serviceProcess}` : "",
       service.link ? `Link: ${service.link}` : "",
       "Se quiser, posso te encaminhar para atendimento."
     ];
@@ -180,48 +206,6 @@ function buildServiceContextReply(service, message) {
   return "";
 }
 
-function buildServiceSalesPrompt(config, service) {
-  return [
-    buildCatalogItemMessage(service),
-    "Posso montar um orcamento rapido pra voce?",
-    "1. Sim, quero um orcamento rapido",
-    "2. Quero entender melhor primeiro",
-    `3. Posso te conectar com ${config.business?.attendantName || "o atendimento"} agora`
-  ].join("\n\n");
-}
-
-function buildServiceGuidedBudgetMessage(service) {
-  return [
-    `Perfeito. Para adiantar seu interesse em ${service?.name || "esse servico"}, me diga qual opcao combina mais com voce:`,
-    "1. Quero algo mais simples",
-    "2. Quero algo mais completo",
-    "3. Ainda nao sei e quero uma orientacao rapida"
-  ].join("\n\n");
-}
-
-function buildBudgetQualificationReply(config, service, option) {
-  const attendant = config.business?.attendantName || "o atendimento";
-
-  if (option === "1") {
-    return [
-      `Perfeito. Ja vou considerar que voce busca algo mais simples para ${service?.name || "esse servico"}.`,
-      `Se quiser, posso te conectar com ${attendant} agora, ou voce pode me dizer seu prazo em uma frase.`
-    ].join("\n\n");
-  }
-
-  if (option === "2") {
-    return [
-      `Otimo. Ja entendi que voce busca algo mais completo para ${service?.name || "esse servico"}.`,
-      `Se quiser, posso te conectar com ${attendant} agora, ou voce pode me dizer qual resultado espera atingir.`
-    ].join("\n\n");
-  }
-
-  return [
-    `Sem problema. Posso te ajudar com uma orientacao inicial sobre ${service?.name || "esse servico"}.`,
-    `Se preferir, tambem posso te conectar com ${attendant} agora para acelerar esse atendimento.`
-  ].join("\n\n");
-}
-
 function getNumberedOption(message) {
   const text = normalizeText(message);
   if (["1", "2", "3"].includes(text)) {
@@ -229,6 +213,71 @@ function getNumberedOption(message) {
   }
 
   return "";
+}
+
+function isBudgetRequestMessage(message) {
+  const text = normalizeText(message);
+  return ["orcamento", "cotacao", "quanto fica", "quanto sairia"].some((term) => text.includes(term));
+}
+
+function isInterestSignalMessage(message) {
+  const text = normalizeText(message);
+  return ["quero", "gostei", "tenho interesse", "me interessa", "vamos seguir", "podemos seguir"].some((term) => text.includes(term));
+}
+
+function buildBudgetRedirectMessage(config, service) {
+  const instructions = String(getBotAdjustablePrompt(config)?.instrucoesNegocio || "").trim();
+  const workflow = getServiceWorkflow(config);
+  const nextStep = String(workflow?.nextStep || "").toLowerCase();
+  const nextStepLine =
+    nextStep === "schedule_meeting"
+      ? "O ideal e conversar com o responsavel para entender melhor o projeto antes de agendar uma reuniao."
+      : nextStep === "request_more_info"
+        ? workflow?.nextStepDetails || "O ideal e coletar mais algumas informacoes antes do orcamento."
+        : nextStep === "send_link"
+          ? workflow?.nextStepDetails || "Posso te direcionar para o proximo passo de atendimento."
+          : "O ideal e conversar com o responsavel para entender melhor o projeto antes de passar um orcamento.";
+  const blocks = [
+    `O orcamento de ${service?.name || "esse servico"} e feito no atendimento humano.`,
+    nextStepLine,
+    workflow?.notes || "",
+    instructions,
+    "Se quiser, posso te conectar com o responsavel para montar um orcamento certinho para voce."
+  ];
+
+  return blocks.filter(Boolean).join("\n\n");
+}
+
+function buildInterestHandoffOfferMessage(config, service) {
+  const attendant = config.business?.attendantName || "atendimento";
+  const workflow = getServiceWorkflow(config);
+  const nextStep = String(workflow?.nextStep || "").toLowerCase();
+
+  if (nextStep === "schedule_meeting") {
+    return [
+      `Perfeito. Vejo que voce tem interesse em ${service?.name || "esse servico"}.`,
+      "Se quiser, posso te encaminhar para marcar uma reuniao."
+    ].join("\n\n");
+  }
+
+  if (nextStep === "request_more_info") {
+    return [
+      `Perfeito. Vejo que voce tem interesse em ${service?.name || "esse servico"}.`,
+      workflow?.nextStepDetails || "Antes de avancar, posso coletar mais algumas informacoes para direcionar voce melhor."
+    ].join("\n\n");
+  }
+
+  if (nextStep === "send_link") {
+    return [
+      `Perfeito. Vejo que voce tem interesse em ${service?.name || "esse servico"}.`,
+      workflow?.nextStepDetails || "Se quiser, posso te passar o proximo link de atendimento."
+    ].join("\n\n");
+  }
+
+  return [
+    `Perfeito. Vejo que voce tem interesse em ${service?.name || "esse servico"}.`,
+    `Se quiser, posso te encaminhar para ${attendant} continuar com voce.`
+  ].join("\n\n");
 }
 
 function buildLearnableKeyword(rawMessage) {
@@ -646,7 +695,7 @@ function tryResolveCatalogChoice({ state, message, config }) {
       intent: "detalhe_categoria_item",
       categoryId: catalogContext.category?.id || "",
       itemId: matches[0]?.id || "",
-      reply: isService ? buildServiceSalesPrompt(config, matches[0]) : buildCatalogItemMessage(matches[0]),
+      reply: isService ? buildServiceDetailMessage(config, matches[0]) : buildCatalogItemMessage(matches[0]),
       mediaMessages,
       nextState: {
         currentState: "menu",
@@ -657,7 +706,7 @@ function tryResolveCatalogChoice({ state, message, config }) {
           !isService
             ? state.conversationState
             : {
-                stage: "service_followup",
+                stage: "context_active",
                 lastSuggestedService: matches[0]?.id || "",
                 lastIntent: "servico",
                 rejectedServices: Array.isArray(state?.conversationState?.rejectedServices)
@@ -795,7 +844,7 @@ function getPlanLabel(config) {
   return normalizePlan(config?.plan);
 }
 
-async function resolveIntentWithPlan(message, config) {
+async function resolveIntentWithPlan(message, config, runtimeContext = {}) {
   const plan = getPlanLabel(config);
   const matchedIntent = matchIntent(message, config);
 
@@ -811,7 +860,7 @@ async function resolveIntentWithPlan(message, config) {
     return matchedIntent;
   }
 
-  const geminiDecision = await detectIntentWithGemini(message, config);
+  const geminiDecision = await detectIntentWithGemini(message, config, runtimeContext);
 
   if (geminiDecision.intent !== "fora_do_escopo") {
     console.log(
@@ -820,7 +869,7 @@ async function resolveIntentWithPlan(message, config) {
     return mapGeminiIntentToFlowIntent(geminiDecision, config);
   }
 
-  const aiDecision = await detectIntentWithAI(message, config);
+  const aiDecision = await detectIntentWithAI(message, config, runtimeContext);
   console.log(
     `[plan:${plan}] IA usada para classificar intencao. Resultado: ${aiDecision.intent} (confidence=${aiDecision.confidence})`
   );
@@ -874,16 +923,17 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
     const option = getNumberedOption(message);
 
-    if (activeService && (option === "1" || isAffirmativeMessage(message))) {
+    if (activeService && (option === "1" || isAffirmativeMessage(message) || isInterestSignalMessage(message))) {
       const next = setState(
         tenantId,
         contactId,
         {
-          currentState: "menu",
-          lastBotMessageType: "service_budget_guided",
+          currentState: "handoff",
+          handoffUntil: Date.now() + config.settings.handoffTimeout * 60 * 1000,
+          lastBotMessageType: "handoff",
           lastUserMessage: "",
           ...buildConversationStatePatch({
-            stage: "budget_guided",
+            stage: "",
             lastSuggestedService: activeService.id,
             lastIntent: "servico",
             rejectedServices: conversationState.rejectedServices
@@ -895,13 +945,13 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       return {
         tenantId,
         contactId,
-        intent: "orcamento_guiado",
-        reply: buildServiceGuidedBudgetMessage(activeService),
+        intent: "interesse_servico",
+        reply: buildInterestHandoffOfferMessage(config, activeService),
         state: next
       };
     }
 
-    if (activeService && option === "2") {
+    if (activeService && (option === "2" || isServiceContextQuestion(message))) {
       const next = setState(
         tenantId,
         contactId,
@@ -928,7 +978,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       };
     }
 
-    if (activeService && option === "3") {
+    if (activeService && (option === "3" || isBudgetRequestMessage(message))) {
       const next = setState(
         tenantId,
         contactId,
@@ -950,40 +1000,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       return {
         tenantId,
         contactId,
-        intent: "atendimento_humano",
-        reply: buildHandoffMessage(config),
-        state: next
-      };
-    }
-  }
-
-  if (conversationState.stage === "budget_guided" && conversationState.lastSuggestedService) {
-    const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
-    const option = getNumberedOption(message);
-
-    if (activeService && option) {
-      const next = setState(
-        tenantId,
-        contactId,
-        {
-          currentState: "menu",
-          lastBotMessageType: "service_budget_qualified",
-          lastUserMessage: "",
-          ...buildConversationStatePatch({
-            stage: "context_active",
-            lastSuggestedService: activeService.id,
-            lastIntent: "servico",
-            rejectedServices: conversationState.rejectedServices
-          })
-        },
-        config.settings.stateTTL
-      );
-
-      return {
-        tenantId,
-        contactId,
-        intent: "qualificacao_orcamento",
-        reply: buildBudgetQualificationReply(config, activeService, option),
+        intent: "orcamento_para_humano",
+        reply: buildBudgetRedirectMessage(config, activeService),
         state: next
       };
     }
@@ -991,7 +1009,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
 
   if (conversationState.lastIntent === "servico" && conversationState.lastSuggestedService && isServiceContextQuestion(message)) {
     const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
-    const contextualReply = buildServiceContextReply(activeService, message);
+    const contextualReply = buildServiceContextReply(config, activeService, message);
 
     if (contextualReply) {
       const contextualState = setState(
@@ -1017,6 +1035,69 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         intent: "contexto_servico",
         reply: contextualReply,
         state: contextualState
+      };
+    }
+  }
+
+  if (conversationState.lastIntent === "servico" && conversationState.lastSuggestedService && isInterestSignalMessage(message)) {
+    const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
+
+    if (activeService) {
+      const next = setState(
+        tenantId,
+        contactId,
+        {
+          currentState: "menu",
+          lastBotMessageType: "service_interest_offer",
+          lastUserMessage: "",
+          ...buildConversationStatePatch({
+            stage: "context_active",
+            lastSuggestedService: activeService.id,
+            lastIntent: "servico",
+            rejectedServices: conversationState.rejectedServices
+          })
+        },
+        config.settings.stateTTL
+      );
+
+      return {
+        tenantId,
+        contactId,
+        intent: "interesse_servico",
+        reply: buildInterestHandoffOfferMessage(config, activeService),
+        state: next
+      };
+    }
+  }
+
+  if (conversationState.lastIntent === "servico" && conversationState.lastSuggestedService && isBudgetRequestMessage(message)) {
+    const activeService = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
+
+    if (activeService) {
+      const next = setState(
+        tenantId,
+        contactId,
+        {
+          currentState: "handoff",
+          handoffUntil: Date.now() + config.settings.handoffTimeout * 60 * 1000,
+          lastBotMessageType: "handoff",
+          lastUserMessage: "",
+          ...buildConversationStatePatch({
+            stage: "",
+            lastSuggestedService: activeService.id,
+            lastIntent: "servico",
+            rejectedServices: conversationState.rejectedServices
+          })
+        },
+        config.settings.stateTTL
+      );
+
+      return {
+        tenantId,
+        contactId,
+        intent: "orcamento_para_humano",
+        reply: buildBudgetRedirectMessage(config, activeService),
+        state: next
       };
     }
   }
@@ -1070,7 +1151,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         tenantId,
         contactId,
         intent: "detalhe_servico_confirmado",
-        reply: buildServiceSalesPrompt(config, pendingService),
+        reply: buildServiceDetailMessage(config, pendingService),
         mediaMessages: buildDetailMediaMessages(pendingService, config),
         state: confirmedState
       };
@@ -1250,7 +1331,12 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     };
   }
 
-  const matchedIntent = await resolveIntentWithPlan(message, config);
+  const activeServiceForContext = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
+  const matchedIntent = await resolveIntentWithPlan(message, config, {
+    currentContext: conversationState.lastIntent === "servico" ? "Cliente esta falando sobre um servico especifico." : "",
+    lastIntent: conversationState.lastIntent,
+    lastServiceName: activeServiceForContext?.name || ""
+  });
   let reply = "";
   let nextState = {
     currentState: matchedIntent.intent,
@@ -1313,7 +1399,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       const serviceLike = isServiceCategory(category);
       reply = item
         ? serviceLike
-          ? buildServiceSalesPrompt(config, item)
+          ? buildServiceDetailMessage(config, item)
           : buildCatalogItemMessage(item)
         : category
           ? buildCatalogListMessage(config, category.id, category.name, serviceLike ? "servico" : "item")
@@ -1322,7 +1408,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       nextState.lastBotMessageType = serviceLike ? "service_detail" : "catalog_detail";
       if (serviceLike) {
         nextState.conversationState = {
-          stage: "service_followup",
+          stage: "context_active",
           lastSuggestedService: item?.id || "",
           lastIntent: "servico",
           rejectedServices: conversationState.rejectedServices

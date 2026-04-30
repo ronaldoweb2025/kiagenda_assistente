@@ -65,6 +65,84 @@ function normalizeStringList(values) {
   return values.map((value) => normalizeString(value)).filter(Boolean);
 }
 
+function normalizeBotProfile(input = {}) {
+  const adjustablePrompt = input?.adjustablePrompt || {};
+  const serviceWorkflow = input?.serviceWorkflow || {};
+  const blockedActions = serviceWorkflow?.blockedActions || {};
+  const normalizedAiTemperature = Number(input?.aiTemperature);
+
+  return {
+    niche: normalizeString(input?.niche) || defaultTenantConfig.botProfile.niche,
+    promptMode: normalizeString(input?.promptMode) || defaultTenantConfig.botProfile.promptMode,
+    promptBase: normalizeString(input?.promptBase) || defaultTenantConfig.botProfile.promptBase,
+    additionalInstructions: normalizeString(input?.additionalInstructions),
+    aiMode: normalizeString(input?.aiMode) || defaultTenantConfig.botProfile.aiMode,
+    aiTemperature:
+      Number.isFinite(normalizedAiTemperature) && normalizedAiTemperature >= 0 && normalizedAiTemperature <= 1
+        ? normalizedAiTemperature
+        : defaultTenantConfig.botProfile.aiTemperature,
+    adjustablePrompt: {
+      estiloAtendimento:
+        normalizeString(adjustablePrompt?.estiloAtendimento) ||
+        defaultTenantConfig.botProfile.adjustablePrompt.estiloAtendimento,
+      tomDeVoz:
+        normalizeString(adjustablePrompt?.tomDeVoz) ||
+        defaultTenantConfig.botProfile.adjustablePrompt.tomDeVoz,
+      nivelDetalhe:
+        normalizeString(adjustablePrompt?.nivelDetalhe) ||
+        defaultTenantConfig.botProfile.adjustablePrompt.nivelDetalhe,
+      focoAtendimento:
+        normalizeString(adjustablePrompt?.focoAtendimento) ||
+        defaultTenantConfig.botProfile.adjustablePrompt.focoAtendimento,
+      instrucoesNegocio: normalizeString(adjustablePrompt?.instrucoesNegocio),
+      regrasPersonalizadas: normalizeString(adjustablePrompt?.regrasPersonalizadas)
+    },
+    serviceWorkflow: {
+      attendanceType:
+        normalizeString(serviceWorkflow?.attendanceType) ||
+        defaultTenantConfig.botProfile.serviceWorkflow.attendanceType,
+      serviceProcess: normalizeString(serviceWorkflow?.serviceProcess),
+      budgetMode:
+        normalizeString(serviceWorkflow?.budgetMode) ||
+        defaultTenantConfig.botProfile.serviceWorkflow.budgetMode,
+      priceDisplayMode:
+        normalizeString(serviceWorkflow?.priceDisplayMode) ||
+        defaultTenantConfig.botProfile.serviceWorkflow.priceDisplayMode,
+      nextStep:
+        normalizeString(serviceWorkflow?.nextStep) ||
+        defaultTenantConfig.botProfile.serviceWorkflow.nextStep,
+      nextStepDetails: normalizeString(serviceWorkflow?.nextStepDetails),
+      blockedActions: {
+        noNegotiate:
+          blockedActions?.noNegotiate !== undefined
+            ? normalizeBoolean(blockedActions.noNegotiate)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noNegotiate,
+        noDiscount:
+          blockedActions?.noDiscount !== undefined
+            ? normalizeBoolean(blockedActions.noDiscount)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noDiscount,
+        noCloseSale:
+          blockedActions?.noCloseSale !== undefined
+            ? normalizeBoolean(blockedActions.noCloseSale)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noCloseSale,
+        noPromiseDeadline:
+          blockedActions?.noPromiseDeadline !== undefined
+            ? normalizeBoolean(blockedActions.noPromiseDeadline)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noPromiseDeadline,
+        noFinalPriceWithoutAnalysis:
+          blockedActions?.noFinalPriceWithoutAnalysis !== undefined
+            ? normalizeBoolean(blockedActions.noFinalPriceWithoutAnalysis)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noFinalPriceWithoutAnalysis,
+        noInventInfo:
+          blockedActions?.noInventInfo !== undefined
+            ? normalizeBoolean(blockedActions.noInventInfo)
+            : defaultTenantConfig.botProfile.serviceWorkflow.blockedActions.noInventInfo
+      },
+      notes: normalizeString(serviceWorkflow?.notes)
+    }
+  };
+}
+
 function normalizeMediaAsset(asset) {
   if (!asset || typeof asset !== "object") {
     return null;
@@ -269,6 +347,7 @@ function normalizeTenant(input = {}) {
       handoff: normalizeString(input?.messages?.handoff),
       audio: normalizeMediaAsset(input?.messages?.audio)
     },
+    botProfile: normalizeBotProfile(input?.botProfile),
     settings: {
       stateTTL: normalizeNumber(input?.settings?.stateTTL, defaultTenantConfig.settings.stateTTL),
       handoffTimeout: normalizeNumber(
@@ -344,6 +423,32 @@ function mergeTenant(baseTenant, partialTenant) {
     messages: {
       ...baseTenant.messages,
       ...(partialTenant.messages || {})
+    },
+    botProfile: {
+      ...(baseTenant.botProfile || defaultTenantConfig.botProfile),
+      ...(partialTenant.botProfile || {}),
+      adjustablePrompt: {
+        ...((baseTenant.botProfile && baseTenant.botProfile.adjustablePrompt) || defaultTenantConfig.botProfile.adjustablePrompt),
+        ...((partialTenant.botProfile && partialTenant.botProfile.adjustablePrompt) || {})
+      },
+      serviceWorkflow: {
+        ...((baseTenant.botProfile && baseTenant.botProfile.serviceWorkflow) || defaultTenantConfig.botProfile.serviceWorkflow),
+        ...((partialTenant.botProfile && partialTenant.botProfile.serviceWorkflow) || {}),
+        blockedActions: {
+          ...(
+            (baseTenant.botProfile &&
+              baseTenant.botProfile.serviceWorkflow &&
+              baseTenant.botProfile.serviceWorkflow.blockedActions) ||
+            defaultTenantConfig.botProfile.serviceWorkflow.blockedActions
+          ),
+          ...(
+            (partialTenant.botProfile &&
+              partialTenant.botProfile.serviceWorkflow &&
+              partialTenant.botProfile.serviceWorkflow.blockedActions) ||
+            {}
+          )
+        }
+      }
     },
     settings: {
       ...baseTenant.settings,

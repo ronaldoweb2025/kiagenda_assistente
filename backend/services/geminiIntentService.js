@@ -1,4 +1,5 @@
 const { getActiveCatalogCategoriesWithItems } = require("../utils/catalogCategories");
+const { readBotModelSettings } = require("../tenancy/botModelSettingsStore");
 
 const ALLOWED_INTENTS = [
   "saudacao",
@@ -37,6 +38,10 @@ function buildFallbackResult() {
     target: "",
     confidence: 0
   };
+}
+
+function getServicesModelConfig() {
+  return readBotModelSettings()?.services || {};
 }
 
 function buildCatalogContext(tenantConfig = {}) {
@@ -92,7 +97,7 @@ function formatCatalogItems(items = []) {
     .join("; ");
 }
 
-async function detectIntentWithGemini(message, tenantConfig = {}) {
+async function detectIntentWithGemini(message, tenantConfig = {}, runtimeContext = {}) {
   const trimmedMessage = String(message || "").trim();
   const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || "").trim();
   const model = String(tenantConfig?.integration?.gemini?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
@@ -102,6 +107,13 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
   }
 
   const context = buildCatalogContext(tenantConfig);
+  const workflow = tenantConfig?.botProfile?.serviceWorkflow || {};
+  const modelConfig = getServicesModelConfig();
+  const runtimeSummary = [
+    runtimeContext?.currentContext ? `Contexto atual: ${runtimeContext.currentContext}` : "",
+    runtimeContext?.lastIntent ? `Ultima intencao: ${runtimeContext.lastIntent}` : "",
+    runtimeContext?.lastServiceName ? `Ultimo servico identificado: ${runtimeContext.lastServiceName}` : ""
+  ].filter(Boolean).join("\n");
 
   try {
     const response = await fetch(
@@ -120,6 +132,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
                   "Responda apenas JSON valido. " +
                   "Nao converse com o usuario. " +
                   "Nao crie informacoes. " +
+                  `${String(modelConfig.promptBase || "").trim() ? `Considere estas regras do modelo:\n${String(modelConfig.promptBase).trim()}\n` : ""}` +
                   "Use apenas estas intencoes: saudacao, produtos, servicos, parcerias, links, atendimento, entrega, preco, item_especifico, fora_do_escopo. " +
                   "Se o usuario mencionar algo parecido com um produto ou servico cadastrado, inclusive por palavra-chave, retorne item_especifico e o nome mais provavel. " +
                   "Exemplo: se existir um servico com keywords como site, website ou landing page, frases como quero site ou preciso de um site devem retornar item_especifico. " +
@@ -136,14 +149,18 @@ async function detectIntentWithGemini(message, tenantConfig = {}) {
                     `Mensagem do cliente: "${trimmedMessage}"\n` +
                     `Negocio: ${context.businessName || "Nao informado"}\n` +
                     `Tipo de negocio: ${context.businessType || "Nao informado"}\n` +
+                    `Como funciona o atendimento: ${String(workflow.serviceProcess || tenantConfig?.business?.description || "").trim() || "Nao informado"}\n` +
+                    `Como funciona o orcamento: ${String(workflow.budgetMode || "").trim() || "Nao informado"}\n` +
+                    `Observacoes do negocio: ${String(workflow.notes || tenantConfig?.botProfile?.adjustablePrompt?.instrucoesNegocio || "").trim() || "Nao informado"}\n` +
                     `Categorias cadastradas: ${context.categories.map((category) => `${category.name}: ${formatCatalogItems(category.items)}`).join(" | ") || "Nenhuma"}\n` +
-                    `Links cadastrados: ${context.links.join(", ") || "Nenhum"}\n`
+                    `Links cadastrados: ${context.links.join(", ") || "Nenhum"}\n` +
+                    `${runtimeSummary ? `${runtimeSummary}\n` : ""}`
                 }
               ]
             }
           ],
           generationConfig: {
-            temperature: 0,
+            temperature: Number(modelConfig.temperature || tenantConfig?.botProfile?.aiTemperature || 0.4),
             responseMimeType: "application/json",
             responseSchema: {
               type: "OBJECT",

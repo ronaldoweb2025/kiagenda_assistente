@@ -9,6 +9,7 @@ const {
   saveTenant
 } = require("../services/tenantService");
 const { readPlanSettings, updatePlanSettings } = require("../tenancy/planSettingsStore");
+const { readBotModelSettings, updateBotModelSettings } = require("../tenancy/botModelSettingsStore");
 
 function isPlanChangePayload(payload = {}) {
   const keys = Object.keys(payload);
@@ -36,6 +37,12 @@ function getTenantById(req, res) {
 function getAdminPlanSettings(req, res) {
   res.json({
     data: readPlanSettings()
+  });
+}
+
+function getAdminBotModelSettings(req, res) {
+  res.json({
+    data: readBotModelSettings()
   });
 }
 
@@ -85,6 +92,14 @@ function putAdminPlanSettings(req, res) {
   });
 }
 
+function putAdminBotModelSettings(req, res) {
+  const botModelSettings = updateBotModelSettings(req.body || {});
+  res.json({
+    message: "Modelos de bot atualizados com sucesso.",
+    data: botModelSettings
+  });
+}
+
 async function deleteTenant(req, res) {
   try {
     if (String(req.query?.permanent || "").toLowerCase() === "true") {
@@ -110,11 +125,13 @@ async function deleteTenant(req, res) {
 
 module.exports = {
   deleteTenant,
+  getAdminBotModelSettings,
   getAdminPlanSettings,
   getTenantById,
   getTenants,
   postRestoreTenantBackup,
   postTenant,
+  putAdminBotModelSettings,
   putAdminPlanSettings,
   putTenant
 };

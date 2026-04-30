@@ -170,6 +170,41 @@
           <div class="section-subcard">
             <div class="section-subcard-header">
               <div>
+                <h4>Comportamento do bot servicos</h4>
+                <p class="muted-copy">Esses campos ajustam como o bot atende sem mexer nas regras internas do sistema.</p>
+              </div>
+            </div>
+            <div class="field-grid">
+              <label>
+                Estilo de atendimento
+                <input id="botEstiloAtendimento" type="text" placeholder="Ex.: consultivo e profissional">
+              </label>
+              <label>
+                Tom de voz
+                <input id="botTomDeVoz" type="text" placeholder="Ex.: simples e direto">
+              </label>
+              <label>
+                Nivel de detalhe
+                <input id="botNivelDetalhe" type="text" placeholder="Ex.: curto, equilibrado, mais explicativo">
+              </label>
+              <label>
+                Foco do atendimento
+                <input id="botFocoAtendimento" type="text" placeholder="Ex.: entender necessidade e direcionar para atendimento">
+              </label>
+              <label class="full-width">
+                Comportamento especifico do negocio
+                <textarea id="botInstrucoesNegocio" placeholder="Ex.: os servicos sao personalizados e precisam de analise antes do orcamento."></textarea>
+              </label>
+              <label class="full-width">
+                Regras adicionais
+                <textarea id="botRegrasPersonalizadas" placeholder="Ex.: evitar linguagem tecnica e focar em beneficios."></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="section-subcard">
+            <div class="section-subcard-header">
+              <div>
                 <h4>IA do atendimento</h4>
                 <p class="muted-copy">Use a IA para ajudar a classificar mensagens fora do menu padrao.</p>
               </div>
@@ -565,6 +600,94 @@
                 <label class="full-width">
                   Sobre o negocio
                   <textarea id="businessDescription" placeholder="Ex.: horario de atendimento, cidade, especialidades e outras informacoes importantes."></textarea>
+                </label>
+              </div>
+            </div>
+
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Como funciona seu atendimento</h4>
+                  <p class="muted-copy">Essas regras ajudam o Bot Servicos a explicar melhor, qualificar o cliente e encaminhar corretamente.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label>
+                  Tipo de atendimento
+                  <select id="serviceAttendanceType">
+                    <option value="online">Online</option>
+                    <option value="presencial">Presencial</option>
+                    <option value="ambos">Ambos</option>
+                  </select>
+                </label>
+                <label>
+                  Como funciona o orcamento
+                  <select id="serviceBudgetMode">
+                    <option value="fixed">Preco fixo</option>
+                    <option value="starting_at">A partir de um valor</option>
+                    <option value="custom">Personalizado / sob consulta</option>
+                  </select>
+                </label>
+                <label>
+                  O bot pode informar preco?
+                  <select id="servicePriceDisplayMode">
+                    <option value="registered_only">Sim, quando houver preco cadastrado</option>
+                    <option value="starting_at_only">Apenas valores a partir de</option>
+                    <option value="do_not_inform">Nao, apenas explicar e direcionar</option>
+                  </select>
+                </label>
+                <label>
+                  Proximo passo quando o cliente se interessa
+                  <select id="serviceNextStep">
+                    <option value="human_whatsapp">Encaminhar para WhatsApp humano</option>
+                    <option value="schedule_meeting">Agendar reuniao</option>
+                    <option value="request_more_info">Solicitar mais informacoes</option>
+                    <option value="send_link">Enviar link</option>
+                    <option value="other">Outro</option>
+                  </select>
+                </label>
+                <label class="full-width">
+                  Como funciona o servico
+                  <textarea id="serviceProcess" placeholder="Ex.: Primeiro entendemos a necessidade do cliente, depois analisamos o caso e so entao passamos uma proposta."></textarea>
+                </label>
+                <label class="full-width">
+                  Detalhes do proximo passo
+                  <textarea id="serviceNextStepDetails" placeholder="Ex.: enviar link do calendario, passar para o responsavel comercial ou pedir mais detalhes do projeto."></textarea>
+                </label>
+              </div>
+
+              <div class="field-grid">
+                <label class="toggle-field">
+                  <span>Nao negociar</span>
+                  <input id="ruleNoNegotiate" type="checkbox">
+                </label>
+                <label class="toggle-field">
+                  <span>Nao dar desconto</span>
+                  <input id="ruleNoDiscount" type="checkbox">
+                </label>
+                <label class="toggle-field">
+                  <span>Nao fechar venda</span>
+                  <input id="ruleNoCloseSale" type="checkbox">
+                </label>
+                <label class="toggle-field">
+                  <span>Nao prometer prazo</span>
+                  <input id="ruleNoPromiseDeadline" type="checkbox">
+                </label>
+                <label class="toggle-field">
+                  <span>Nao informar preco final sem analise</span>
+                  <input id="ruleNoFinalPriceWithoutAnalysis" type="checkbox">
+                </label>
+                <label class="toggle-field">
+                  <span>Nao inventar informacao</span>
+                  <input id="ruleNoInventInfo" type="checkbox">
+                </label>
+              </div>
+
+              <div class="field-grid">
+                <label class="full-width">
+                  Observacoes importantes
+                  <textarea id="serviceWorkflowNotes" placeholder="Ex.: Trabalho com servicos personalizados. Antes de passar qualquer orcamento, preciso entender melhor o projeto do cliente."></textarea>
                 </label>
               </div>
             </div>

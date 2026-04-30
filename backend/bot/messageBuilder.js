@@ -20,6 +20,40 @@ function getAttendantLabel(config) {
   return attendantName && attendantName.toLowerCase() !== "atendimento" ? attendantName : "nossa equipe";
 }
 
+function getBotAdjustablePrompt(config) {
+  return config?.botProfile?.adjustablePrompt || {};
+}
+
+function getServiceWorkflow(config) {
+  return config?.botProfile?.serviceWorkflow || {};
+}
+
+function isServicesBotProfile(config) {
+  const niche = String(config?.botProfile?.niche || "").trim().toLowerCase();
+  const promptMode = String(config?.botProfile?.promptMode || "").trim().toLowerCase();
+  const botModel = String(config?.botModel || "").trim().toLowerCase();
+  return niche === "services" || promptMode === "services" || botModel === "services_agendamento";
+}
+
+function getServiceClosingQuestion(config) {
+  const focus = String(getBotAdjustablePrompt(config)?.focoAtendimento || "").toLowerCase();
+  const nextStep = String(getServiceWorkflow(config)?.nextStep || "").toLowerCase();
+
+  if (focus.includes("reuniao")) {
+    return "Voce ja tem algo em mente ou quer que eu te encaminhe para atendimento?";
+  }
+
+  if (nextStep === "schedule_meeting") {
+    return "Se quiser, posso te encaminhar para marcar uma reuniao.";
+  }
+
+  if (focus.includes("lead")) {
+    return "Quer que eu te explique melhor ou te encaminhe para atendimento?";
+  }
+
+  return "Quer que eu te explique melhor ou te encaminhe para atendimento?";
+}
+
 function hasCustomerProfile(state) {
   return Boolean(state?.customerName && state?.customerRegion);
 }
@@ -72,6 +106,14 @@ function buildWelcomeMessage(config) {
     return interpolate(config.messages.welcome, config);
   }
 
+  if (isServicesBotProfile(config)) {
+    return joinBlocks([
+      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
+      "Posso te ajudar a entender os servicos e organizar seu atendimento inicial.",
+      buildMenuMessage(config)
+    ]);
+  }
+
   return joinBlocks([
     `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
     "Escolha uma opcao do menu:",
@@ -93,7 +135,8 @@ function buildBusinessMessage(config) {
   const lines = [
     config.business.name ? `${config.business.name}` : "",
     config.business.type ? `Tipo: ${config.business.type}` : "",
-    config.business.description || ""
+    config.business.description || "",
+    getServiceWorkflow(config)?.serviceProcess ? `Como funciona o atendimento: ${getServiceWorkflow(config).serviceProcess}` : ""
   ];
 
   return lines.filter(Boolean).join("\n");
@@ -183,6 +226,42 @@ function buildCatalogItemMessage(item) {
   return joinBlocks(blocks);
 }
 
+function buildServiceDetailMessage(config, item, options = {}) {
+  const detailLevel = String(getBotAdjustablePrompt(config)?.nivelDetalhe || "").toLowerCase();
+  const workflow = getServiceWorkflow(config);
+  const shouldBeShort = detailLevel.includes("curto");
+  const shouldBeDetailed = detailLevel.includes("explic");
+  const blocks = [item?.name || "Servico"];
+
+  if (item?.description) {
+    blocks.push(item.description);
+  }
+
+  if (item?.price && workflow?.priceDisplayMode !== "do_not_inform") {
+    blocks.push(
+      workflow?.priceDisplayMode === "starting_at_only"
+        ? `Valor a partir de ${item.price}`
+        : `Preco: ${item.price}`
+    );
+  } else if (options.includeMissingPriceHint) {
+    blocks.push("Esse servico e sob consulta e depende da necessidade do cliente.");
+  }
+
+  if (shouldBeDetailed && item?.link) {
+    blocks.push(`Saiba mais:\n${item.link}`);
+  }
+
+  if (shouldBeDetailed && workflow?.serviceProcess) {
+    blocks.push(`Como funciona: ${workflow.serviceProcess}`);
+  }
+
+  if (!shouldBeShort) {
+    blocks.push(getServiceClosingQuestion(config));
+  }
+
+  return joinBlocks(blocks);
+}
+
 function buildCatalogMatchesMessage(items, title, singularLabel) {
   const names = items
     .map((item) => item.name)
@@ -231,12 +310,31 @@ function buildHandoffMessage(config) {
     return interpolate(config.messages.handoff, config);
   }
 
+  if (isServicesBotProfile(config)) {
+    const workflow = getServiceWorkflow(config);
+    const nextStep = String(workflow?.nextStep || "").toLowerCase();
+
+    if (nextStep === "schedule_meeting") {
+      return "Vou te encaminhar para o responsavel continuar e alinhar uma reuniao com voce.";
+    }
+
+    if (nextStep === "send_link") {
+      return workflow?.nextStepDetails || `${getAttendantLabel(config)} vai continuar com voce e te passar o proximo link de atendimento.`;
+    }
+
+    return `${getAttendantLabel(config)} vai continuar com voce e pode te orientar no proximo passo do atendimento.`;
+  }
+
   return `${getAttendantLabel(config)} vai continuar por aqui em instantes.`;
 }
 
 function buildFallbackMessage(config) {
   if (config.messages.fallback) {
     return interpolate(config.messages.fallback, config);
+  }
+
+  if (isServicesBotProfile(config)) {
+    return `Nao entendi totalmente sua mensagem ainda.\n\nPosso te mostrar os servicos, explicar um servico especifico ou te encaminhar para atendimento.`;
   }
 
   return `Nao entendi sua mensagem. Responda com uma opcao do menu:\n${buildMenuMessage(config)}`;
@@ -270,6 +368,7 @@ module.exports = {
   buildCatalogMessage,
   buildDeliveryPickupMessage,
   buildFallbackMessage,
+  buildServiceDetailMessage,
   buildHandoffMessage,
   buildLinksMessage,
   buildLinkChoiceHelpMessage,
@@ -280,6 +379,8 @@ module.exports = {
   buildProfileCollectionPrompt,
   buildProfileCollectionRetryMessage,
   buildSpecificLinkMessage,
+  getBotAdjustablePrompt,
+  getServiceWorkflow,
   buildWelcomeMessage,
   hasCustomerProfile
 };
