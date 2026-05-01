@@ -9,6 +9,9 @@ const DEFAULT_MAX_DAILY_LIMIT = 20;
 const MAX_ITEMS_PER_IMPORT = 20;
 const SAFE_OPERATION_START = "09:15";
 const SAFE_OPERATION_END = "17:30";
+const BATCH_RANDOM_START_MINUTES = 9 * 60;
+const BATCH_RANDOM_END_MINUTES = 18 * 60;
+const DUPLICATE_LOOKBACK_DAYS = 30;
 const MAX_LOGS = 2000;
 const MAX_HISTORY = 5000;
 const MAX_REPLIES = 3000;
@@ -66,6 +69,12 @@ function timeToMinutes(value) {
 
 function addMinutes(date, minutes) {
   return new Date(date.getTime() + minutes * 60 * 1000);
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
 }
 
 function todayKey(timezone = DEFAULT_TIMEZONE, referenceDate = new Date()) {
@@ -172,7 +181,6 @@ function buildCampaignRecord(tenant, payload, options = {}) {
     totals: {
       total: payload.items.length,
       draft: payload.items.length,
-      ready_to_send: 0,
       pending: 0,
       scheduled: 0,
       sending: 0,
@@ -271,13 +279,27 @@ function hasSentMessageToday(store, phone, timezone) {
   });
 }
 
+function hasRecentSentWithinDays(store, phone, days) {
+  const normalizedPhone = normalizePhone(phone);
+  const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  return store.leadHistory.some((entry) => {
+    return (
+      normalizePhone(entry.phone) === normalizedPhone &&
+      entry.direction === "outbound" &&
+      entry.status === "sent" &&
+      new Date(entry.createdAt).getTime() >= threshold
+    );
+  });
+}
+
 function hasActiveQueueForPhone(store, phone) {
   const normalizedPhone = normalizePhone(phone);
 
   return store.queue.some((item) => {
     return (
       normalizePhone(item.phone) === normalizedPhone &&
-      ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || ""))
+      ["draft", "pending", "scheduled", "sending"].includes(String(item.status || ""))
     );
   });
 }
@@ -329,6 +351,8 @@ function buildQueueItems(tenant, campaign, payload) {
       },
       safety: {
         duplicateBlocked: false,
+        duplicateAlert: false,
+        duplicateApproved: false,
         replyBlocked: false,
         dailyLimitDayKey: "",
         randomizationBucket: `${campaign.mode}_${index + 1}`
@@ -390,7 +414,6 @@ function recalculateCampaignTotals(store, campaignId) {
   const totals = {
     total: queueItems.length,
     draft: 0,
-    ready_to_send: 0,
     pending: 0,
     scheduled: 0,
     sending: 0,
@@ -452,6 +475,10 @@ function importCampaign(tenantId, payload, options = {}) {
           issues
         });
       } else {
+        if (hasRecentSentWithinDays(store, queueItem.phone, DUPLICATE_LOOKBACK_DAYS)) {
+          queueItem.safety.duplicateAlert = true;
+          queueItem.failureReason = "duplicate_alert_last_30_days";
+        }
         acceptedQueueItems.push(queueItem);
       }
     });
@@ -493,6 +520,10 @@ function getCampaigns(tenantId) {
   };
 }
 
+function update_draft_message(tenantId, queueId, payload = {}) {
+  return updateDraftMessage(tenantId, queueId, payload);
+}
+
 function updateDraftMessage(tenantId, queueId, payload = {}) {
   const tenant = readTenant(tenantId);
   ensureCampaignAccess(tenant);
@@ -508,14 +539,17 @@ function updateDraftMessage(tenantId, queueId, payload = {}) {
 
     const currentStatus = String(queueItem.status || "");
 
-    if (!["draft", "ready_to_send"].includes(currentStatus)) {
-      const error = new Error("Somente itens em draft ou ready_to_send podem ser revisados manualmente.");
+    if (!["draft", "scheduled"].includes(currentStatus)) {
+      const error = new Error("Somente itens em draft ou scheduled podem ser revisados manualmente.");
       error.statusCode = 400;
       throw error;
     }
 
     const nextMessage = normalizeString(payload.personalizedMessage ?? payload.personalized_message ?? queueItem.personalizedMessage);
     const requestedStatus = normalizeString(payload.status || currentStatus).toLowerCase();
+    const requestedSchedule = normalizeString(payload.scheduledFor ?? payload.scheduled_for ?? queueItem.scheduledFor);
+    const duplicateApproved =
+      payload.duplicateApproved !== undefined ? Boolean(payload.duplicateApproved) : Boolean(queueItem.safety?.duplicateApproved);
 
     if (!nextMessage) {
       const error = new Error("A mensagem do lead nao pode ficar vazia.");
@@ -523,16 +557,34 @@ function updateDraftMessage(tenantId, queueId, payload = {}) {
       throw error;
     }
 
-    if (!["draft", "ready_to_send"].includes(requestedStatus)) {
+    if (!["draft", "scheduled"].includes(requestedStatus)) {
       const error = new Error("Status invalido para revisao manual.");
       error.statusCode = 400;
       throw error;
+    }
+
+    if (requestedStatus === "scheduled") {
+      const parsedSchedule = new Date(requestedSchedule);
+
+      if (!requestedSchedule || Number.isNaN(parsedSchedule.getTime())) {
+        const error = new Error("Informe uma data e horario validos para agendar o envio.");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      queueItem.scheduledFor = parsedSchedule.toISOString();
+      queueItem.processing.nextEligibleAt = queueItem.scheduledFor;
+    }
+
+    if (requestedStatus !== "scheduled") {
+      queueItem.processing.nextEligibleAt = "";
     }
 
     queueItem.personalizedMessage = nextMessage;
     queueItem.status = requestedStatus;
     queueItem.updatedAt = new Date().toISOString();
     queueItem.failureReason = "";
+    queueItem.safety.duplicateApproved = duplicateApproved;
     queueItem.review = {
       reviewedAt: queueItem.updatedAt,
       lastEditor: normalizeString(payload.editor) || "tenant_manual_review"
@@ -545,11 +597,14 @@ function updateDraftMessage(tenantId, queueId, payload = {}) {
       type: "draft_update",
       level: "info",
       createdAt: queueItem.updatedAt,
-      message: requestedStatus === "ready_to_send"
-        ? `Lead ${queueItem.company} revisado e marcado como pronto para envio.`
-        : `Rascunho do lead ${queueItem.company} atualizado manualmente.`,
+      message:
+        requestedStatus === "scheduled"
+          ? `Lead ${queueItem.company} agendado manualmente para ${queueItem.scheduledFor}.`
+          : `Rascunho do lead ${queueItem.company} atualizado manualmente.`,
       details: {
-        status: requestedStatus
+        status: requestedStatus,
+        scheduledFor: queueItem.scheduledFor || "",
+        duplicateApproved: queueItem.safety.duplicateApproved
       }
     });
 
@@ -590,7 +645,7 @@ function markLeadReplied(tenantId, payload = {}) {
     store.queue.forEach((item) => {
       if (
         normalizePhone(item.phone) === phone &&
-        ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || ""))
+        ["draft", "pending", "scheduled", "sending"].includes(String(item.status || ""))
       ) {
         item.status = "replied";
         item.repliedAt = replyEntry.receivedAt;
@@ -623,7 +678,7 @@ function markLeadReplied(tenantId, payload = {}) {
 function cancelCampaign(tenantId, campaignId, reason = "cancelled_by_admin") {
   return updateCampaignStore(tenantId, (store) => {
     store.queue.forEach((item) => {
-      if (item.campaignId === campaignId && ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(item.status)) {
+      if (item.campaignId === campaignId && ["draft", "pending", "scheduled", "sending"].includes(item.status)) {
         item.status = "cancelled";
         item.cancelledAt = new Date().toISOString();
         item.updatedAt = item.cancelledAt;
@@ -651,26 +706,89 @@ function getNextDueQueueItem(store) {
   const dueItems = store.queue
     .filter((item) => ["pending", "scheduled"].includes(String(item.status || "")))
     .filter((item) => new Date(item.processing?.nextEligibleAt || item.scheduledFor).getTime() <= Date.now())
+    .filter((item) => !item.safety?.duplicateAlert || item.safety?.duplicateApproved)
     .sort((left, right) => new Date(left.processing?.nextEligibleAt || left.scheduledFor).getTime() - new Date(right.processing?.nextEligibleAt || right.scheduledFor).getTime());
 
   return dueItems[0] || null;
 }
 
-function getNextReadyToSendItem(store) {
-  return (
-    store.queue
-      .filter((item) => String(item.status || "") === "ready_to_send")
-      .sort((left, right) => {
-        const leftOrder = Number(left.queueOrder || 0);
-        const rightOrder = Number(right.queueOrder || 0);
+function buildBatchScheduledAt(baseDate, dayOffset) {
+  const dayDate = addDays(baseDate, dayOffset);
+  dayDate.setHours(0, 0, 0, 0);
+  return addMinutes(dayDate, randomBetween(BATCH_RANDOM_START_MINUTES, BATCH_RANDOM_END_MINUTES)).toISOString();
+}
 
-        if (leftOrder !== rightOrder) {
-          return leftOrder - rightOrder;
+function approveCampaignBatch(tenantId, payload = {}) {
+  const tenant = readTenant(tenantId);
+  ensureCampaignAccess(tenant);
+  const requestedQueueIds = Array.isArray(payload.queueIds) ? payload.queueIds.map((value) => normalizeString(value)).filter(Boolean) : [];
+
+  if (!requestedQueueIds.length) {
+    const error = new Error("Selecione ao menos um lead para aprovar em lote.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return updateCampaignStore(tenantId, (store) => {
+    const selectedItems = store.queue
+      .filter((item) => requestedQueueIds.includes(item.queueId))
+      .filter((item) => String(item.status || "") === "draft")
+      .sort((left, right) => Number(left.queueOrder || 0) - Number(right.queueOrder || 0));
+
+    if (!selectedItems.length) {
+      const error = new Error("Nenhum lead elegivel em draft foi encontrado para aprovar.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const now = new Date();
+    const skipped = [];
+
+    let approvedIndex = 0;
+
+    selectedItems.forEach((item) => {
+      if (item.safety?.duplicateAlert && !item.safety?.duplicateApproved) {
+        skipped.push(item.queueId);
+        item.failureReason = "duplicate_alert_requires_manual_ok";
+        return;
+      }
+
+      const dayOffset = Math.floor(approvedIndex / 10);
+      const scheduledFor = buildBatchScheduledAt(now, dayOffset);
+      item.status = "scheduled";
+      item.scheduledFor = scheduledFor;
+      item.processing.nextEligibleAt = scheduledFor;
+      item.updatedAt = new Date().toISOString();
+      item.failureReason = "";
+      approvedIndex += 1;
+
+      appendLog(store, {
+        logId: createId("log"),
+        campaignId: item.campaignId,
+        queueId: item.queueId,
+        type: "batch_schedule",
+        level: "info",
+        createdAt: item.updatedAt,
+        message: `Lead ${item.company} agendado em lote para ${scheduledFor}.`,
+        details: {
+          queueOrder: item.queueOrder,
+          scheduledFor
         }
+      });
+    });
 
-        return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
-      })[0] || null
-  );
+    const impactedCampaignIds = new Set(selectedItems.map((item) => item.campaignId));
+    impactedCampaignIds.forEach((campaignId) => recalculateCampaignTotals(store, campaignId));
+    store.meta.updatedAt = new Date().toISOString();
+
+    return {
+      ...store,
+      lastBatchApproval: {
+        approved: selectedItems.length - skipped.length,
+        skipped
+      }
+    };
+  });
 }
 
 async function processTenantCampaignQueue(tenantId) {
@@ -876,13 +994,13 @@ async function dispatchNextCampaignLead(tenantId) {
   }
 
   const store = readCampaignStore(tenantId);
-  const nextItem = getNextReadyToSendItem(store);
+  const nextItem = getNextDueQueueItem(store);
 
   if (!nextItem) {
     return {
       tenantId,
       processed: 0,
-      reason: "no_ready_to_send_items"
+      reason: "no_due_scheduled_items"
     };
   }
 
@@ -932,7 +1050,6 @@ async function dispatchNextCampaignLead(tenantId) {
     queueItem.status = "sending";
     queueItem.updatedAt = new Date().toISOString();
     queueItem.lastAttemptAt = queueItem.updatedAt;
-    queueItem.scheduledFor = queueItem.updatedAt;
     queueItem.processing.attempts = normalizeInteger(queueItem.processing.attempts, 0, { min: 0, max: 99 }) + 1;
     queueItem.processing.lockToken = createId("lock");
     queueItem.processing.lockedAt = queueItem.updatedAt;
@@ -955,7 +1072,6 @@ async function dispatchNextCampaignLead(tenantId) {
 
       queueItem.status = "sent";
       queueItem.sentAt = sentAt;
-      queueItem.scheduledFor = sentAt;
       queueItem.updatedAt = sentAt;
       queueItem.failureReason = "";
       queueItem.processing.lockToken = "";
@@ -1122,11 +1238,13 @@ function updateCampaignAccess(tenantId, payload = {}) {
 }
 
 module.exports = {
+  DUPLICATE_LOOKBACK_DAYS,
   DEFAULT_DAILY_LIMIT,
   DEFAULT_MAX_DAILY_LIMIT,
   MAX_ITEMS_PER_IMPORT,
   SAFE_OPERATION_END,
   SAFE_OPERATION_START,
+  approveCampaignBatch,
   cancelCampaign,
   dispatchNextCampaignLead,
   getCampaigns,
@@ -1135,6 +1253,7 @@ module.exports = {
   normalizePhone,
   processCampaignQueue,
   ensureCampaignAccess,
+  update_draft_message,
   updateDraftMessage,
   updateCampaignAccess,
   validatePhone

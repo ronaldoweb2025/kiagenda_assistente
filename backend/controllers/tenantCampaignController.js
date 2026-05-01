@@ -1,4 +1,5 @@
 const {
+  approveCampaignBatch,
   cancelCampaign,
   dispatchNextCampaignLead,
   getCampaigns,
@@ -79,6 +80,23 @@ async function postDispatchNextCampaignLead(req, res, next) {
   }
 }
 
+function postApproveCampaignBatch(req, res, next) {
+  try {
+    const store = approveCampaignBatch(req.params.tenantId, req.body || {});
+
+    res.json({
+      message: "Lote aprovado e distribuido com sucesso.",
+      data: {
+        tenantId: req.params.tenantId,
+        campaigns: store.campaigns,
+        queue: store.queue
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function patchDraftMessage(req, res, next) {
   try {
     const store = updateDraftMessage(req.params.tenantId, req.params.queueId, req.body || {});
@@ -129,6 +147,7 @@ function putCampaignAccess(req, res, next) {
 module.exports = {
   getTenantCampaigns,
   patchDraftMessage,
+  postApproveCampaignBatch,
   postCancelCampaign,
   postDispatchNextCampaignLead,
   postImportCampaign,

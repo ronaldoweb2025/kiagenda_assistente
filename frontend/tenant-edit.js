@@ -137,17 +137,21 @@ const dashboardElements = {
   essentialPlanFeatures: document.getElementById("essentialPlanFeatures"),
   professionalPlanFeatures: document.getElementById("professionalPlanFeatures"),
   businessPlanFeatures: document.getElementById("businessPlanFeatures"),
-  campaignFeatureStatus: document.getElementById("campaignFeatureStatus"),
-  campaignDailyLimit: document.getElementById("campaignDailyLimit"),
-  campaignsCount: document.getElementById("campaignsCount"),
-  campaignQueueCount: document.getElementById("campaignQueueCount"),
+  campaignTotalLeads: document.getElementById("campaignTotalLeads"),
+  campaignDraftCount: document.getElementById("campaignDraftCount"),
+  campaignScheduledTodayCount: document.getElementById("campaignScheduledTodayCount"),
+  campaignSentCount: document.getElementById("campaignSentCount"),
   campaignImportFile: document.getElementById("campaignImportFile"),
   campaignImportFileName: document.getElementById("campaignImportFileName"),
   importCampaignButton: document.getElementById("importCampaignButton"),
+  approveCampaignBatchButton: document.getElementById("approveCampaignBatchButton"),
+  dispatchNextCampaignButton: document.getElementById("dispatchNextCampaignButton"),
   refreshCampaignsButton: document.getElementById("refreshCampaignsButton"),
   processCampaignWorkerButton: document.getElementById("processCampaignWorkerButton"),
   campaignsList: document.getElementById("campaignsList"),
-  campaignQueueList: document.getElementById("campaignQueueList"),
+  campaignDraftList: document.getElementById("campaignDraftList"),
+  campaignScheduledList: document.getElementById("campaignScheduledList"),
+  campaignHistoryList: document.getElementById("campaignHistoryList"),
   campaignLogsList: document.getElementById("campaignLogsList"),
   productsPanel: document.getElementById("productsPanel"),
   servicesPanel: document.getElementById("servicesPanel"),
@@ -2358,6 +2362,26 @@ function formatCampaignDateTime(value) {
   return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("pt-BR");
 }
 
+function toDateTimeLocalValue(value) {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 function renderCampaignCards() {
   if (!dashboardElements.campaignsList) {
     return;
@@ -2403,79 +2427,119 @@ function renderCampaignCards() {
 }
 
 function renderCampaignQueue() {
-  if (!dashboardElements.campaignQueueList) {
+  const draftContainer = dashboardElements.campaignDraftList;
+  const scheduledContainer = dashboardElements.campaignScheduledList;
+  const historyContainer = dashboardElements.campaignHistoryList;
+
+  if (!draftContainer || !scheduledContainer || !historyContainer) {
     return;
   }
 
-  dashboardElements.campaignQueueList.innerHTML = "";
+  draftContainer.innerHTML = "";
+  scheduledContainer.innerHTML = "";
+  historyContainer.innerHTML = "";
+
   const queueItems = Array.isArray(dashboardState.campaignsData?.queue)
-    ? [...dashboardState.campaignsData.queue]
-        .sort((left, right) => {
-          const priority = (status) => {
-            if (String(status || "") === "ready_to_send") return 0;
-            if (String(status || "") === "draft") return 1;
-            return 2;
-          };
-          const leftWaiting = priority(left.status);
-          const rightWaiting = priority(right.status);
-
-          if (leftWaiting !== rightWaiting) {
-            return leftWaiting - rightWaiting;
-          }
-
-          return Number(left.queueOrder || 0) - Number(right.queueOrder || 0);
-        })
-        .slice(0, 10)
+    ? [...dashboardState.campaignsData.queue].sort((left, right) => Number(left.queueOrder || 0) - Number(right.queueOrder || 0))
     : [];
 
-  if (!queueItems.length) {
-    dashboardElements.campaignQueueList.innerHTML = '<p class="empty-copy">Nenhum item na fila ainda.</p>';
-    return;
-  }
+  const draftItems = queueItems.filter((item) => String(item.status || "") === "draft");
+  const scheduledItems = queueItems.filter((item) => ["scheduled", "pending", "sending"].includes(String(item.status || "")));
+  const historyItems = queueItems.filter((item) => ["sent", "failed", "replied", "cancelled"].includes(String(item.status || "")));
 
-  queueItems.forEach((item) => {
+  const renderEmptyState = (container, message) => {
+    if (!container.children.length) {
+      container.innerHTML = `<p class="empty-copy">${message}</p>`;
+    }
+  };
+
+  const buildBaseCard = (item) => {
     const card = document.createElement("article");
     card.className = "tenant-card admin-tenant-card";
-    const messageValue = String(item.personalizedMessage || "");
-    const isEditable = ["draft", "ready_to_send"].includes(String(item.status || ""));
-    card.innerHTML = `
-      <div>
-        <h3>${KiagendaApp.escapeHtml(item.company || item.phone || "Lead")}</h3>
-        <p><strong>Telefone:</strong> ${KiagendaApp.escapeHtml(item.phone || "-")}</p>
-        <p><strong>Posicao:</strong> ${KiagendaApp.escapeHtml(String(item.queueOrder || "-"))}</p>
-        <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(item.status || "-")}</p>
-        <p><strong>Horario real do envio:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.sentAt || item.scheduledFor))}</p>
-        <p><strong>Motivo:</strong> ${KiagendaApp.escapeHtml(item.failureReason || "-")}</p>
-        <label class="full-width">
-          <strong>Mensagem revisavel</strong>
-          <textarea data-queue-message="${KiagendaApp.escapeHtml(item.queueId)}" ${isEditable ? "" : "readonly"}>${KiagendaApp.escapeHtml(messageValue)}</textarea>
-        </label>
-      </div>
+    const content = document.createElement("div");
+    content.innerHTML = `
+      <h3>${KiagendaApp.escapeHtml(item.company || item.phone || "Lead")}</h3>
+      <p><strong>Telefone:</strong> ${KiagendaApp.escapeHtml(item.phone || "-")}</p>
+      <p><strong>Posicao:</strong> ${KiagendaApp.escapeHtml(String(item.queueOrder || "-"))}</p>
+      <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(item.status || "-")}</p>
+      <p><strong>Agendado para:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.scheduledFor))}</p>
+      <p><strong>Horario real do envio:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.sentAt))}</p>
+      <p><strong>Motivo:</strong> ${KiagendaApp.escapeHtml(item.failureReason || "-")}</p>
     `;
+    card.appendChild(content);
+    return { card, content };
+  };
 
-    if (isEditable) {
-      const actions = document.createElement("div");
-      actions.className = "button-row";
+  draftItems.forEach((item) => {
+    const { card, content } = buildBaseCard(item);
+    const duplicateAlert = Boolean(item.safety?.duplicateAlert);
 
-      const saveDraftButton = document.createElement("button");
-      saveDraftButton.type = "button";
-      saveDraftButton.className = "secondary-button";
-      saveDraftButton.textContent = "Salvar draft";
-      saveDraftButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "draft")));
-      actions.appendChild(saveDraftButton);
+    const selectLabel = document.createElement("label");
+    selectLabel.className = "toggle-field";
+    const selectSpan = document.createElement("span");
+    selectSpan.textContent = "Selecionar no lote";
+    const selectInput = document.createElement("input");
+    selectInput.type = "checkbox";
+    selectInput.setAttribute("data-campaign-select", item.queueId);
+    selectLabel.appendChild(selectSpan);
+    selectLabel.appendChild(selectInput);
+    content.appendChild(selectLabel);
 
-      const readyButton = document.createElement("button");
-      readyButton.type = "button";
-      readyButton.className = "primary-button";
-      readyButton.textContent = "Marcar pronto";
-      readyButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "ready_to_send")));
-      actions.appendChild(readyButton);
+    const messageLabel = document.createElement("label");
+    messageLabel.className = "full-width";
+    const messageTitle = document.createElement("strong");
+    messageTitle.textContent = "Mensagem revisavel";
+    const textarea = document.createElement("textarea");
+    textarea.setAttribute("data-queue-message", item.queueId);
+    textarea.value = String(item.personalizedMessage || "");
+    messageLabel.appendChild(messageTitle);
+    messageLabel.appendChild(textarea);
+    content.appendChild(messageLabel);
 
-      card.appendChild(actions);
+    if (duplicateAlert) {
+      const duplicateLabel = document.createElement("label");
+      duplicateLabel.className = "toggle-field";
+      const duplicateSpan = document.createElement("span");
+      duplicateSpan.textContent = "OK manual para duplicate_alert";
+      const duplicateInput = document.createElement("input");
+      duplicateInput.type = "checkbox";
+      duplicateInput.setAttribute("data-queue-duplicate-ok", item.queueId);
+      duplicateInput.checked = Boolean(item.safety?.duplicateApproved);
+      duplicateLabel.appendChild(duplicateSpan);
+      duplicateLabel.appendChild(duplicateInput);
+      content.appendChild(duplicateLabel);
     }
 
-    dashboardElements.campaignQueueList.appendChild(card);
+    const actions = document.createElement("div");
+    actions.className = "button-row";
+
+    const saveDraftButton = document.createElement("button");
+    saveDraftButton.type = "button";
+    saveDraftButton.className = "secondary-button";
+    saveDraftButton.textContent = "Salvar draft";
+    saveDraftButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "draft")));
+    actions.appendChild(saveDraftButton);
+
+    card.appendChild(actions);
+    draftContainer.appendChild(card);
   });
+
+  scheduledItems.forEach((item) => {
+    const { card } = buildBaseCard(item);
+    scheduledContainer.appendChild(card);
+  });
+
+  historyItems
+    .sort((left, right) => new Date(right.updatedAt || right.sentAt || 0).getTime() - new Date(left.updatedAt || left.sentAt || 0).getTime())
+    .slice(0, 20)
+    .forEach((item) => {
+      const { card } = buildBaseCard(item);
+      historyContainer.appendChild(card);
+    });
+
+  renderEmptyState(draftContainer, "Nenhum lead aguardando revisao.");
+  renderEmptyState(scheduledContainer, "Nenhum lead agendado.");
+  renderEmptyState(historyContainer, "Nenhum lead no historico.");
 }
 
 function renderCampaignLogs() {
@@ -2507,20 +2571,37 @@ function renderCampaignLogs() {
 }
 
 function renderCampaigns() {
-  if (!dashboardElements.campaignFeatureStatus) {
+  if (!dashboardElements.campaignTotalLeads) {
     return;
   }
 
-  const featureConfig = getCampaignFeatureConfig();
-  const enabled = isNinjaSendEnabled();
-  const campaigns = Array.isArray(dashboardState.campaignsData?.campaigns) ? dashboardState.campaignsData.campaigns : [];
   const queueItems = Array.isArray(dashboardState.campaignsData?.queue) ? dashboardState.campaignsData.queue : [];
-  const activeQueueItems = queueItems.filter((item) => ["draft", "ready_to_send", "pending", "scheduled", "sending"].includes(String(item.status || "")));
+  const totalLeads = queueItems.length;
+  const draftCount = queueItems.filter((item) => String(item.status || "") === "draft").length;
+  const todayDateKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: getCampaignFeatureConfig().timezone || "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+  const scheduledTodayCount = queueItems.filter((item) => {
+    return (
+      String(item.status || "") === "scheduled" &&
+      item.scheduledFor &&
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: getCampaignFeatureConfig().timezone || "America/Sao_Paulo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date(item.scheduledFor)) === todayDateKey
+    );
+  }).length;
+  const sentCount = queueItems.filter((item) => String(item.status || "") === "sent").length;
 
-  dashboardElements.campaignFeatureStatus.textContent = enabled ? "Ativo" : "Indisponivel";
-  dashboardElements.campaignDailyLimit.textContent = String(featureConfig.dailyLimit || 10);
-  dashboardElements.campaignsCount.textContent = String(campaigns.length);
-  dashboardElements.campaignQueueCount.textContent = String(activeQueueItems.length);
+  dashboardElements.campaignTotalLeads.textContent = String(totalLeads);
+  dashboardElements.campaignDraftCount.textContent = String(draftCount);
+  dashboardElements.campaignScheduledTodayCount.textContent = String(scheduledTodayCount);
+  dashboardElements.campaignSentCount.textContent = String(sentCount);
   if (dashboardElements.campaignImportFileName) {
     dashboardElements.campaignImportFileName.value =
       dashboardElements.campaignImportFile?.files?.[0]?.name || dashboardElements.campaignImportFileName.value || "";
@@ -3185,6 +3266,8 @@ async function refreshCampaignsPanel() {
 
 async function updateCampaignDraftMessage(queueId, status) {
   const textarea = document.querySelector(`[data-queue-message="${CSS.escape(queueId)}"]`);
+  const scheduleInput = document.querySelector(`[data-queue-schedule="${CSS.escape(queueId)}"]`);
+  const duplicateInput = document.querySelector(`[data-queue-duplicate-ok="${CSS.escape(queueId)}"]`);
 
   if (!textarea) {
     throw new Error("Nao foi possivel localizar a mensagem do lead para revisao.");
@@ -3199,6 +3282,8 @@ async function updateCampaignDraftMessage(queueId, status) {
       },
       body: JSON.stringify({
         personalizedMessage: textarea.value,
+        scheduledFor: scheduleInput?.value ? new Date(scheduleInput.value).toISOString() : "",
+        duplicateApproved: Boolean(duplicateInput?.checked),
         status,
         editor: "tenant_manual_review"
       })
@@ -3208,20 +3293,56 @@ async function updateCampaignDraftMessage(queueId, status) {
   await loadCampaignsData();
   renderAll();
   setFeedback(
-    status === "ready_to_send"
-      ? response.message || "Lead revisado e marcado como pronto para envio."
+    status === "scheduled"
+      ? response.message || "Lead agendado com sucesso."
       : response.message || "Rascunho atualizado com sucesso."
   );
 }
 
-async function processCampaignWorkerNow() {
+async function approveCampaignBatch() {
+  const selectedQueueIds = Array.from(document.querySelectorAll("[data-campaign-select]:checked")).map((input) => input.getAttribute("data-campaign-select")).filter(Boolean);
+
+  if (!selectedQueueIds.length) {
+    throw new Error("Selecione ao menos um lead em Draft para aprovar o lote.");
+  }
+
+  for (const queueId of selectedQueueIds) {
+    await updateCampaignDraftMessage(queueId, "draft");
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/approve-batch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      queueIds: selectedQueueIds
+    })
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Lote aprovado e agendado com sucesso.");
+}
+
+async function dispatchNextCampaignLead() {
   const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/dispatch-next`, {
     method: "POST"
   });
 
   await loadCampaignsData();
   renderAll();
-  setFeedback(response.message || "Proximo lead disparado com sucesso.");
+  setFeedback(response.message || "Proximo lead devido processado com sucesso.");
+}
+
+async function processCampaignWorkerNow() {
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/process`, {
+    method: "POST"
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Agendados processados com sucesso.");
 }
 
 async function cancelCampaign(campaignId) {
@@ -3475,6 +3596,8 @@ dashboardElements.campaignImportFile?.addEventListener("change", () => {
   dashboardElements.campaignImportFileName.value = dashboardElements.campaignImportFile?.files?.[0]?.name || "";
 });
 dashboardElements.importCampaignButton?.addEventListener("click", () => runAction(importCampaignJson));
+dashboardElements.approveCampaignBatchButton?.addEventListener("click", () => runAction(approveCampaignBatch));
+dashboardElements.dispatchNextCampaignButton?.addEventListener("click", () => runAction(dispatchNextCampaignLead));
 dashboardElements.refreshCampaignsButton?.addEventListener("click", () => runAction(refreshCampaignsPanel));
 dashboardElements.processCampaignWorkerButton?.addEventListener("click", () => runAction(processCampaignWorkerNow));
 dashboardElements.showProductsTabButton.addEventListener("click", () => setCatalogTab("products"));

@@ -404,21 +404,28 @@
 
           <div class="stats-grid">
             <article class="stat-card">
-              <span>Status</span>
-              <strong id="campaignFeatureStatus">Indisponivel</strong>
+              <span>Total de Leads</span>
+              <strong id="campaignTotalLeads">0</strong>
             </article>
             <article class="stat-card">
-              <span>Limite diario</span>
-              <strong id="campaignDailyLimit">0</strong>
+              <span>Aguardando Revisao</span>
+              <strong id="campaignDraftCount">0</strong>
             </article>
             <article class="stat-card">
-              <span>Campanhas</span>
-              <strong id="campaignsCount">0</strong>
+              <span>Agendados para Hoje</span>
+              <strong id="campaignScheduledTodayCount">0</strong>
             </article>
             <article class="stat-card">
-              <span>Fila ativa</span>
-              <strong id="campaignQueueCount">0</strong>
+              <span>Sucesso Total</span>
+              <strong id="campaignSentCount">0</strong>
             </article>
+          </div>
+
+          <div class="button-row">
+            <button id="approveCampaignBatchButton" class="primary-button" type="button">Aprovar Lote</button>
+            <button id="dispatchNextCampaignButton" class="secondary-button" type="button">Disparar Proximo</button>
+            <button id="refreshCampaignsButton" class="secondary-button" type="button">Atualizar fila</button>
+            <button id="processCampaignWorkerButton" class="neutral-button" type="button">Processar agendados agora</button>
           </div>
 
           <div class="section-subcard">
@@ -440,8 +447,6 @@
             </div>
             <div class="button-row">
               <button id="importCampaignButton" class="primary-button" type="button">Importar JSON</button>
-              <button id="refreshCampaignsButton" class="secondary-button" type="button">Atualizar fila</button>
-              <button id="processCampaignWorkerButton" class="neutral-button" type="button">Disparar Proximo</button>
             </div>
           </div>
 
@@ -458,11 +463,27 @@
           <div class="section-subcard">
             <div class="section-subcard-header">
               <div>
-                <h4>Fila recente</h4>
-                <p class="muted-copy">Itens enviados, falhas e pausas por resposta.</p>
+                <h4>Mini Kanban</h4>
+                <p class="muted-copy">Revise a copy, aprove em lote e acompanhe a fila ativa e o historico.</p>
               </div>
             </div>
-            <div id="campaignQueueList" class="tenant-list admin-tenant-list"></div>
+            <div class="stats-grid">
+              <article class="section-subcard">
+                <h4>Draft</h4>
+                <p class="muted-copy">Laboratorio de copy e revisao.</p>
+                <div id="campaignDraftList" class="tenant-list admin-tenant-list"></div>
+              </article>
+              <article class="section-subcard">
+                <h4>Scheduled</h4>
+                <p class="muted-copy">Fila aprovada e agendada.</p>
+                <div id="campaignScheduledList" class="tenant-list admin-tenant-list"></div>
+              </article>
+              <article class="section-subcard">
+                <h4>Sent / Failed</h4>
+                <p class="muted-copy">Historico de envios concluido.</p>
+                <div id="campaignHistoryList" class="tenant-list admin-tenant-list"></div>
+              </article>
+            </div>
           </div>
 
           <div class="section-subcard">
