@@ -34,6 +34,16 @@ function normalizePhone(value) {
   return normalizeString(value).replace(/\D/g, "");
 }
 
+function pickFirstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function createId(prefix) {
   return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 }
@@ -146,12 +156,94 @@ function validateImportPayload(payload) {
 }
 
 function normalizeTags(tags) {
-  return Array.isArray(tags) ? tags.map((tag) => normalizeString(tag)).filter(Boolean) : [];
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => normalizeString(tag)).filter(Boolean);
+  }
+
+  if (typeof tags === "string") {
+    return tags
+      .split(",")
+      .map((tag) => normalizeString(tag))
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function validatePhone(phone) {
   const normalized = normalizePhone(phone);
   return normalized.length >= 12 && normalized.length <= 13;
+}
+
+function normalizeCampaignItem(input = {}, index = 0) {
+  const metadata = input?.metadata && typeof input.metadata === "object" ? input.metadata : {};
+  const company = normalizeString(
+    pickFirstDefined(input.company, input.empresa, input.business_name, input.businessName, metadata.company, metadata.empresa)
+  );
+  const city = normalizeString(
+    pickFirstDefined(input.city, input.cidade, input.location_city, input.locationCity, metadata.city, metadata.cidade)
+  );
+  const niche = normalizeString(
+    pickFirstDefined(input.niche, input.segment, input.nicho, input.market, metadata.niche, metadata.nicho)
+  );
+  const leadId = normalizeString(
+    pickFirstDefined(input.lead_id, input.leadId, input.id, input.external_id, input.externalId)
+  ) || `lead_${index + 1}`;
+  const phone = normalizePhone(
+    pickFirstDefined(input.phone, input.whatsapp, input.telefone, input.celular, metadata.phone, metadata.whatsapp)
+  );
+  const personalizedMessage = normalizeString(
+    pickFirstDefined(
+      input.personalized_message,
+      input.personalizedMessage,
+      input.message,
+      input.mensagem,
+      input.copy,
+      input.text,
+      metadata.personalized_message
+    )
+  );
+
+  return {
+    lead_id: leadId,
+    company,
+    city,
+    niche,
+    phone,
+    personalized_message: personalizedMessage,
+    send_mode: normalizeString(pickFirstDefined(input.send_mode, input.sendMode, input.mode, input.delivery_mode)),
+    scheduled_for: normalizeString(pickFirstDefined(input.scheduled_for, input.scheduledFor, input.schedule_for, input.scheduleFor)),
+    min_delay_minutes: pickFirstDefined(input.min_delay_minutes, input.minDelayMinutes, input.min_delay),
+    max_delay_minutes: pickFirstDefined(input.max_delay_minutes, input.maxDelayMinutes, input.max_delay),
+    tags: normalizeTags(pickFirstDefined(input.tags, input.labels, input.etiquetas)),
+    metadata,
+    status: "draft"
+  };
+}
+
+function normalizeCampaignPayload(payload = {}) {
+  const normalizedItems = Array.isArray(payload.items)
+    ? payload.items.map((item, index) => normalizeCampaignItem(item, index))
+    : [];
+
+  return {
+    campaign_name: normalizeString(
+      pickFirstDefined(payload.campaign_name, payload.campaignName, payload.nome_campanha, payload.name)
+    ),
+    batch_id: normalizeString(
+      pickFirstDefined(payload.batch_id, payload.batchId, payload.lote_id, payload.loteId, payload.id)
+    ),
+    daily_limit: pickFirstDefined(payload.daily_limit, payload.dailyLimit, payload.limit_per_day, payload.limitPerDay),
+    timezone: normalizeString(pickFirstDefined(payload.timezone, payload.fuso_horario, payload.time_zone)),
+    operational_window:
+      payload.operational_window && typeof payload.operational_window === "object"
+        ? payload.operational_window
+        : payload.operationalWindow && typeof payload.operationalWindow === "object"
+          ? payload.operationalWindow
+          : {},
+    metadata: payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {},
+    items: normalizedItems
+  };
 }
 
 function buildCampaignRecord(tenant, payload, options = {}) {
@@ -443,10 +535,11 @@ function recalculateCampaignTotals(store, campaignId) {
 function importCampaign(tenantId, payload, options = {}) {
   const tenant = readTenant(tenantId);
   ensureCampaignAccess(tenant);
-  validateImportPayload(payload);
+  const normalizedPayload = normalizeCampaignPayload(payload);
+  validateImportPayload(normalizedPayload);
 
   return updateCampaignStore(tenantId, (store) => {
-    const campaign = buildCampaignRecord(tenant, payload, options);
+    const campaign = buildCampaignRecord(tenant, normalizedPayload, options);
 
     if (store.campaigns.some((item) => item.batchId === campaign.batchId)) {
       const error = new Error("Ja existe uma campanha importada com este batch_id para este tenant.");
@@ -454,7 +547,7 @@ function importCampaign(tenantId, payload, options = {}) {
       throw error;
     }
 
-    const queueItems = buildQueueItems(tenant, campaign, payload);
+    const queueItems = buildQueueItems(tenant, campaign, normalizedPayload);
     const importIssues = [];
     const acceptedQueueItems = [];
 
@@ -619,6 +712,16 @@ function countSentToday(store, timezone) {
   return store.queue.filter((item) => item.status === "sent" && todayKey(timezone, new Date(item.sentAt || item.updatedAt)) === currentDay).length;
 }
 
+function removeCampaignIfEmpty(store, campaignId) {
+  const hasItems = store.queue.some((item) => item.campaignId === campaignId);
+  if (hasItems) {
+    recalculateCampaignTotals(store, campaignId);
+    return;
+  }
+
+  store.campaigns = store.campaigns.filter((item) => item.campaignId !== campaignId);
+}
+
 function markLeadReplied(tenantId, payload = {}) {
   return updateCampaignStore(tenantId, (store) => {
     const phone = normalizePhone(payload.phone || payload.contactId);
@@ -675,6 +778,92 @@ function markLeadReplied(tenantId, payload = {}) {
   });
 }
 
+function deleteQueueLead(tenantId, queueId, payload = {}) {
+  const tenant = readTenant(tenantId);
+  ensureCampaignAccess(tenant);
+
+  return updateCampaignStore(tenantId, (store) => {
+    const queueIndex = store.queue.findIndex((item) => item.queueId === queueId);
+
+    if (queueIndex === -1) {
+      const error = new Error("Lead da fila nao encontrado.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const [removedItem] = store.queue.splice(queueIndex, 1);
+    const removedAt = new Date().toISOString();
+
+    appendLog(store, {
+      logId: createId("log"),
+      campaignId: removedItem.campaignId,
+      queueId: removedItem.queueId,
+      type: "queue_delete",
+      level: "warn",
+      createdAt: removedAt,
+      message: `Lead ${removedItem.company || removedItem.phone} removido manualmente da fila.`,
+      details: {
+        reason: normalizeString(payload.reason) || "deleted_by_tenant"
+      }
+    });
+
+    removeCampaignIfEmpty(store, removedItem.campaignId);
+    store.meta.updatedAt = removedAt;
+    return store;
+  });
+}
+
+function clearCampaignQueue(tenantId, payload = {}) {
+  const tenant = readTenant(tenantId);
+  ensureCampaignAccess(tenant);
+
+  return updateCampaignStore(tenantId, (store) => {
+    const mode = normalizeString(payload.mode || "all").toLowerCase();
+    const removableStatuses = mode === "active"
+      ? ["draft", "pending", "scheduled", "sending", "failed", "cancelled", "replied"]
+      : null;
+    const removedItems = removableStatuses
+      ? store.queue.filter((item) => removableStatuses.includes(String(item.status || "")))
+      : [...store.queue];
+    const removedIds = new Set(removedItems.map((item) => item.queueId));
+    const removedAt = new Date().toISOString();
+
+    if (!removedItems.length) {
+      return {
+        ...store,
+        lastClearSummary: {
+          removed: 0,
+          mode
+        }
+      };
+    }
+
+    store.queue = store.queue.filter((item) => !removedIds.has(item.queueId));
+    const activeCampaignIds = new Set(store.queue.map((item) => item.campaignId));
+    store.campaigns = store.campaigns.filter((item) => activeCampaignIds.has(item.campaignId));
+    store.logs = [{
+      logId: createId("log"),
+      campaignId: "",
+      type: "queue_clear",
+      level: "warn",
+      createdAt: removedAt,
+      message: `${removedItems.length} lead(s) removido(s) manualmente da fila Ninja Send.`,
+      details: {
+        mode
+      }
+    }];
+
+    store.meta.updatedAt = removedAt;
+    return {
+      ...store,
+      lastClearSummary: {
+        removed: removedItems.length,
+        mode
+      }
+    };
+  });
+}
+
 function cancelCampaign(tenantId, campaignId, reason = "cancelled_by_admin") {
   return updateCampaignStore(tenantId, (store) => {
     store.queue.forEach((item) => {
@@ -710,6 +899,13 @@ function getNextDueQueueItem(store) {
     .sort((left, right) => new Date(left.processing?.nextEligibleAt || left.scheduledFor).getTime() - new Date(right.processing?.nextEligibleAt || right.scheduledFor).getTime());
 
   return dueItems[0] || null;
+}
+
+function buildNextOperationalRetry(operationalWindow = {}) {
+  const startMinutes = timeToMinutes(operationalWindow.start) ?? timeToMinutes(SAFE_OPERATION_START);
+  const nextDate = addDays(new Date(), 1);
+  nextDate.setHours(0, 0, 0, 0);
+  return addMinutes(nextDate, startMinutes + randomBetween(0, 30)).toISOString();
 }
 
 function buildBatchScheduledAt(baseDate, dayOffset) {
@@ -853,7 +1049,41 @@ async function processTenantCampaignQueue(tenantId) {
   }
 
   if (hasSentMessageToday(store, nextItem.phone, timezone)) {
-    await cancelQueueItem(tenantId, nextItem.queueId, "already_sent_today");
+    await postponeQueueItem(
+      tenantId,
+      nextItem.queueId,
+      0,
+      "already_sent_today_manual_review"
+    );
+    await updateCampaignStore(tenantId, (currentStore) => {
+      const queueItem = currentStore.queue.find((item) => item.queueId === nextItem.queueId);
+      if (!queueItem) {
+        return currentStore;
+      }
+
+      const retryAt = buildNextOperationalRetry(queueItem.operationalWindow || campaign?.operationalWindow || {});
+      queueItem.processing.nextEligibleAt = retryAt;
+      queueItem.scheduledFor = retryAt;
+      queueItem.updatedAt = new Date().toISOString();
+      queueItem.failureReason = "already_sent_today_manual_review";
+
+      appendLog(currentStore, {
+        logId: createId("log"),
+        campaignId: queueItem.campaignId,
+        queueId: queueItem.queueId,
+        type: "send_hold",
+        level: "warn",
+        createdAt: queueItem.updatedAt,
+        message: "Lead preservado na fila porque ja houve envio hoje para esse numero.",
+        details: {
+          retryAt
+        }
+      });
+
+      recalculateCampaignTotals(currentStore, queueItem.campaignId);
+      currentStore.meta.updatedAt = queueItem.updatedAt;
+      return currentStore;
+    });
     return {
       tenantId,
       processed: 0,
@@ -1033,7 +1263,36 @@ async function dispatchNextCampaignLead(tenantId) {
   }
 
   if (hasSentMessageToday(store, nextItem.phone, timezone)) {
-    await cancelQueueItem(tenantId, nextItem.queueId, "already_sent_today");
+    await updateCampaignStore(tenantId, (currentStore) => {
+      const queueItem = currentStore.queue.find((item) => item.queueId === nextItem.queueId);
+      if (!queueItem) {
+        return currentStore;
+      }
+
+      const retryAt = buildNextOperationalRetry(queueItem.operationalWindow || campaign?.operationalWindow || {});
+      queueItem.status = "scheduled";
+      queueItem.scheduledFor = retryAt;
+      queueItem.updatedAt = new Date().toISOString();
+      queueItem.failureReason = "already_sent_today_manual_review";
+      queueItem.processing.nextEligibleAt = retryAt;
+
+      appendLog(currentStore, {
+        logId: createId("log"),
+        campaignId: queueItem.campaignId,
+        queueId: queueItem.queueId,
+        type: "manual_send_hold",
+        level: "warn",
+        createdAt: queueItem.updatedAt,
+        message: "Lead mantido na fila porque ja houve envio hoje para esse numero.",
+        details: {
+          retryAt
+        }
+      });
+
+      recalculateCampaignTotals(currentStore, queueItem.campaignId);
+      currentStore.meta.updatedAt = queueItem.updatedAt;
+      return currentStore;
+    });
     return {
       tenantId,
       processed: 0,
@@ -1256,5 +1515,7 @@ module.exports = {
   update_draft_message,
   updateDraftMessage,
   updateCampaignAccess,
+  clearCampaignQueue,
+  deleteQueueLead,
   validatePhone
 };

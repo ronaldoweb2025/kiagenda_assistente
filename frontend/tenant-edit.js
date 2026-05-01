@@ -148,6 +148,7 @@ const dashboardElements = {
   dispatchNextCampaignButton: document.getElementById("dispatchNextCampaignButton"),
   refreshCampaignsButton: document.getElementById("refreshCampaignsButton"),
   processCampaignWorkerButton: document.getElementById("processCampaignWorkerButton"),
+  clearCampaignQueueButton: document.getElementById("clearCampaignQueueButton"),
   campaignsList: document.getElementById("campaignsList"),
   campaignDraftList: document.getElementById("campaignDraftList"),
   campaignScheduledList: document.getElementById("campaignScheduledList"),
@@ -2362,6 +2363,29 @@ function formatCampaignDateTime(value) {
   return Number.isNaN(parsed.getTime()) ? "-" : parsed.toLocaleString("pt-BR");
 }
 
+function getCampaignStatusLabel(status) {
+  switch (String(status || "").toLowerCase()) {
+    case "draft":
+      return "Rascunho";
+    case "scheduled":
+      return "Agendado";
+    case "sending":
+      return "Enviando";
+    case "sent":
+      return "Enviado";
+    case "failed":
+      return "Falhou";
+    case "replied":
+      return "Respondeu";
+    case "cancelled":
+      return "Cancelado";
+    case "pending":
+      return "Pendente";
+    default:
+      return String(status || "-");
+  }
+}
+
 function toDateTimeLocalValue(value) {
   if (!value) {
     return "";
@@ -2461,7 +2485,7 @@ function renderCampaignQueue() {
       <h3>${KiagendaApp.escapeHtml(item.company || item.phone || "Lead")}</h3>
       <p><strong>Telefone:</strong> ${KiagendaApp.escapeHtml(item.phone || "-")}</p>
       <p><strong>Posicao:</strong> ${KiagendaApp.escapeHtml(String(item.queueOrder || "-"))}</p>
-      <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(item.status || "-")}</p>
+      <p><strong>Status:</strong> ${KiagendaApp.escapeHtml(getCampaignStatusLabel(item.status))}</p>
       <p><strong>Agendado para:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.scheduledFor))}</p>
       <p><strong>Horario real do envio:</strong> ${KiagendaApp.escapeHtml(formatCampaignDateTime(item.sentAt))}</p>
       <p><strong>Motivo:</strong> ${KiagendaApp.escapeHtml(item.failureReason || "-")}</p>
@@ -2488,7 +2512,7 @@ function renderCampaignQueue() {
     const messageLabel = document.createElement("label");
     messageLabel.className = "full-width";
     const messageTitle = document.createElement("strong");
-    messageTitle.textContent = "Mensagem revisavel";
+    messageTitle.textContent = "Mensagem revisável";
     const textarea = document.createElement("textarea");
     textarea.setAttribute("data-queue-message", item.queueId);
     textarea.value = String(item.personalizedMessage || "");
@@ -2496,11 +2520,23 @@ function renderCampaignQueue() {
     messageLabel.appendChild(textarea);
     content.appendChild(messageLabel);
 
+    const scheduleLabel = document.createElement("label");
+    scheduleLabel.className = "full-width";
+    const scheduleTitle = document.createElement("strong");
+    scheduleTitle.textContent = "Data e hora do envio";
+    const scheduleInput = document.createElement("input");
+    scheduleInput.type = "datetime-local";
+    scheduleInput.setAttribute("data-queue-schedule", item.queueId);
+    scheduleInput.value = toDateTimeLocalValue(item.scheduledFor);
+    scheduleLabel.appendChild(scheduleTitle);
+    scheduleLabel.appendChild(scheduleInput);
+    content.appendChild(scheduleLabel);
+
     if (duplicateAlert) {
       const duplicateLabel = document.createElement("label");
       duplicateLabel.className = "toggle-field";
       const duplicateSpan = document.createElement("span");
-      duplicateSpan.textContent = "OK manual para duplicate_alert";
+      duplicateSpan.textContent = "Liberar envio manualmente";
       const duplicateInput = document.createElement("input");
       duplicateInput.type = "checkbox";
       duplicateInput.setAttribute("data-queue-duplicate-ok", item.queueId);
@@ -2516,16 +2552,72 @@ function renderCampaignQueue() {
     const saveDraftButton = document.createElement("button");
     saveDraftButton.type = "button";
     saveDraftButton.className = "secondary-button";
-    saveDraftButton.textContent = "Salvar draft";
+    saveDraftButton.textContent = "Salvar rascunho";
     saveDraftButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "draft")));
     actions.appendChild(saveDraftButton);
+
+    const scheduleButton = document.createElement("button");
+    scheduleButton.type = "button";
+    scheduleButton.className = "primary-button";
+    scheduleButton.textContent = "Agendar envio";
+    scheduleButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "scheduled")));
+    actions.appendChild(scheduleButton);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "neutral-button";
+    deleteButton.textContent = "Excluir lead";
+    deleteButton.addEventListener("click", () => runAction(() => deleteCampaignLead(item.queueId)));
+    actions.appendChild(deleteButton);
 
     card.appendChild(actions);
     draftContainer.appendChild(card);
   });
 
   scheduledItems.forEach((item) => {
-    const { card } = buildBaseCard(item);
+    const { card, content } = buildBaseCard(item);
+
+    const messageLabel = document.createElement("label");
+    messageLabel.className = "full-width";
+    const messageTitle = document.createElement("strong");
+    messageTitle.textContent = "Mensagem revisável";
+    const textarea = document.createElement("textarea");
+    textarea.setAttribute("data-queue-message", item.queueId);
+    textarea.value = String(item.personalizedMessage || "");
+    messageLabel.appendChild(messageTitle);
+    messageLabel.appendChild(textarea);
+    content.appendChild(messageLabel);
+
+    const scheduleLabel = document.createElement("label");
+    scheduleLabel.className = "full-width";
+    const scheduleTitle = document.createElement("strong");
+    scheduleTitle.textContent = "Editar data e hora do envio";
+    const scheduleInput = document.createElement("input");
+    scheduleInput.type = "datetime-local";
+    scheduleInput.setAttribute("data-queue-schedule", item.queueId);
+    scheduleInput.value = toDateTimeLocalValue(item.scheduledFor);
+    scheduleLabel.appendChild(scheduleTitle);
+    scheduleLabel.appendChild(scheduleInput);
+    content.appendChild(scheduleLabel);
+
+    const actions = document.createElement("div");
+    actions.className = "button-row";
+
+    const updateScheduleButton = document.createElement("button");
+    updateScheduleButton.type = "button";
+    updateScheduleButton.className = "primary-button";
+    updateScheduleButton.textContent = "Salvar agendamento";
+    updateScheduleButton.addEventListener("click", () => runAction(() => updateCampaignDraftMessage(item.queueId, "scheduled")));
+    actions.appendChild(updateScheduleButton);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "neutral-button";
+    deleteButton.textContent = "Excluir lead";
+    deleteButton.addEventListener("click", () => runAction(() => deleteCampaignLead(item.queueId)));
+    actions.appendChild(deleteButton);
+
+    card.appendChild(actions);
     scheduledContainer.appendChild(card);
   });
 
@@ -2534,6 +2626,15 @@ function renderCampaignQueue() {
     .slice(0, 20)
     .forEach((item) => {
       const { card } = buildBaseCard(item);
+      const actions = document.createElement("div");
+      actions.className = "button-row";
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "neutral-button";
+      deleteButton.textContent = "Excluir lead";
+      deleteButton.addEventListener("click", () => runAction(() => deleteCampaignLead(item.queueId)));
+      actions.appendChild(deleteButton);
+      card.appendChild(actions);
       historyContainer.appendChild(card);
     });
 
@@ -3345,6 +3446,52 @@ async function processCampaignWorkerNow() {
   setFeedback(response.message || "Agendados processados com sucesso.");
 }
 
+async function deleteCampaignLead(queueId) {
+  const confirmed = window.confirm("Excluir este lead da fila do Ninja Send?");
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/queue/${queueId}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      reason: "deleted_by_tenant"
+    })
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Lead removido da fila com sucesso.");
+}
+
+async function clearCampaignQueue() {
+  const confirmed = window.confirm(
+    "Limpar toda a fila atual do Ninja Send? Isso remove os leads do painel para voce subir novos lotes."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/campaigns/clear`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      mode: "all"
+    })
+  });
+
+  await loadCampaignsData();
+  renderAll();
+  setFeedback(response.message || "Fila Ninja Send limpa com sucesso.");
+}
+
 async function cancelCampaign(campaignId) {
   const confirmed = window.confirm("Cancelar esta campanha? Os itens pendentes e agendados nao serao mais enviados.");
 
@@ -3600,6 +3747,7 @@ dashboardElements.approveCampaignBatchButton?.addEventListener("click", () => ru
 dashboardElements.dispatchNextCampaignButton?.addEventListener("click", () => runAction(dispatchNextCampaignLead));
 dashboardElements.refreshCampaignsButton?.addEventListener("click", () => runAction(refreshCampaignsPanel));
 dashboardElements.processCampaignWorkerButton?.addEventListener("click", () => runAction(processCampaignWorkerNow));
+dashboardElements.clearCampaignQueueButton?.addEventListener("click", () => runAction(clearCampaignQueue));
 dashboardElements.showProductsTabButton.addEventListener("click", () => setCatalogTab("products"));
 dashboardElements.showServicesTabButton.addEventListener("click", () => setCatalogTab("services"));
 dashboardElements.showPartnershipsTabButton.addEventListener("click", () => setCatalogTab("partnerships"));

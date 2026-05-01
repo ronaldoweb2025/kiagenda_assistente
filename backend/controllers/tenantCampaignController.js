@@ -1,6 +1,8 @@
 const {
   approveCampaignBatch,
   cancelCampaign,
+  clearCampaignQueue,
+  deleteQueueLead,
   dispatchNextCampaignLead,
   getCampaigns,
   importCampaign,
@@ -131,6 +133,42 @@ function postCancelCampaign(req, res, next) {
   }
 }
 
+function deleteCampaignQueueLead(req, res, next) {
+  try {
+    const store = deleteQueueLead(req.params.tenantId, req.params.queueId, req.body || {});
+
+    res.json({
+      message: "Lead removido da fila com sucesso.",
+      data: {
+        tenantId: req.params.tenantId,
+        queue: store.queue,
+        campaigns: store.campaigns
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function postClearCampaignQueue(req, res, next) {
+  try {
+    const store = clearCampaignQueue(req.params.tenantId, req.body || {});
+
+    res.json({
+      message: "Fila Ninja Send limpa com sucesso.",
+      data: {
+        tenantId: req.params.tenantId,
+        removed: store.lastClearSummary?.removed || 0,
+        mode: store.lastClearSummary?.mode || "all",
+        queue: store.queue,
+        campaigns: store.campaigns
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function putCampaignAccess(req, res, next) {
   try {
     const tenant = updateCampaignAccess(req.params.tenantId, req.body || {});
@@ -146,8 +184,10 @@ function putCampaignAccess(req, res, next) {
 
 module.exports = {
   getTenantCampaigns,
+  deleteCampaignQueueLead,
   patchDraftMessage,
   postApproveCampaignBatch,
+  postClearCampaignQueue,
   postCancelCampaign,
   postDispatchNextCampaignLead,
   postImportCampaign,
