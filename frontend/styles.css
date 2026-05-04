@@ -705,6 +705,12 @@ textarea {
   grid-column: 1 / -1;
 }
 
+.section-divider {
+  height: 1px;
+  margin: 28px 0;
+  background: var(--card-border-soft);
+}
+
 .status-positive {
   color: var(--secondary);
 }

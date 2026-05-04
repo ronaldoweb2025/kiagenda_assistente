@@ -15,6 +15,7 @@ const ALLOWED_INTENTS = [
   "agradecimento",
   "despedida",
   "mensagem_confusa",
+  "duvida_identidade",
   "produtos",
   "servicos",
   "parcerias",
@@ -131,7 +132,8 @@ async function detectIntentWithAI(message, tenantConfig = {}, runtimeContext = {
               "Responda apenas com JSON no schema fornecido. " +
               "Nunca invente dados do negocio. " +
               `${String(modelConfig.promptBase || "").trim() ? `Considere estas regras do modelo:\n${String(modelConfig.promptBase).trim()}\n` : ""}` +
-              "Escolha apenas uma intencao entre: saudacao, pedir_servicos, site_landing_page, trafego_pago, google_meu_negocio, seo_local, preco_orcamento, portfolio, prazo_entrega, suporte_cliente, parceria_revenda, links_importantes, falar_com_humano, agradecimento, despedida, mensagem_confusa, produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
+              "Escolha apenas uma intencao entre: saudacao, pedir_servicos, site_landing_page, trafego_pago, google_meu_negocio, seo_local, preco_orcamento, portfolio, prazo_entrega, suporte_cliente, parceria_revenda, links_importantes, falar_com_humano, agradecimento, despedida, mensagem_confusa, duvida_identidade, produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
+              "Use duvida_identidade quando o cliente perguntar se esta falando com humano, robo, assistente, Ronaldo ou quem esta atendendo. " +
               "Use fora_do_escopo quando houver ambiguidade, baixa certeza ou assunto fora dessas categorias."
           },
           {

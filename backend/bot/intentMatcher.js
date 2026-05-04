@@ -97,6 +97,41 @@ function includesAny(text, terms) {
   return terms.some((term) => term && text.includes(normalizeText(term)));
 }
 
+function isIdentityQuestion(text) {
+  if (!text) {
+    return false;
+  }
+
+  if (/\b(?:voce|vc)\s+e\b.*\b(?:ronaldo|humano|robo|assistente|atendente)\b/.test(text)) {
+    return true;
+  }
+
+  if (/\be\b.*\b(?:ronaldo|humano|robo|assistente|atendente)\b/.test(text) && text.includes("?")) {
+    return true;
+  }
+
+  return [
+    "voce e o",
+    "voce e a",
+    "vc e o",
+    "vc e a",
+    "e voce mesmo",
+    "e vc mesmo",
+    "e humano",
+    "voce e humano",
+    "vc e humano",
+    "e robo",
+    "voce e robo",
+    "vc e robo",
+    "estou falando com quem",
+    "to falando com quem",
+    "quem esta falando",
+    "quem fala",
+    "quem e voce",
+    "quem e vc"
+  ].some((term) => text.includes(term));
+}
+
 function findAdvancedOptionMatch(text, config) {
   const options = Array.isArray(config?.advancedOptions) ? config.advancedOptions : [];
 
@@ -260,6 +295,10 @@ function matchIntent(message, config) {
     return { intent: "saudacao" };
   }
 
+  if (isIdentityQuestion(text)) {
+    return { intent: "duvida_identidade" };
+  }
+
   if (includesAny(text, ["menu", "opcoes", "opcao", "inicio", "comecar", "quais opcoes"])) {
     return { intent: "menu" };
   }
@@ -272,7 +311,21 @@ function matchIntent(message, config) {
     return { intent: "entrega_retirada" };
   }
 
-  if (includesAny(text, ["humano", "atendente", "atendimento", "pessoa", "suporte", "falar com", "ronaldo"])) {
+  if (includesAny(text, [
+    "quero falar com humano",
+    "falar com humano",
+    "quero falar com atendente",
+    "falar com atendente",
+    "chama atendente",
+    "chamar atendente",
+    "chama uma pessoa",
+    "chamar uma pessoa",
+    "quero atendimento humano",
+    "me passa para atendimento",
+    "me encaminha",
+    "pode chamar o ronaldo",
+    "quero falar com ronaldo"
+  ])) {
     return { intent: "atendimento_humano" };
   }
 

@@ -17,6 +17,7 @@ const dashboardState = {
   editingCategoryItemId: "",
   catalogKeywordSuggestions: [],
   editingLinkId: "",
+  editingFaqId: "",
   editingMenuId: "",
   editingMessageType: "",
   advancedMenuOpen: false,
@@ -202,6 +203,11 @@ const dashboardElements = {
   addLinkButton: document.getElementById("addLinkButton"),
   cancelLinkEditButton: document.getElementById("cancelLinkEditButton"),
   linksList: document.getElementById("linksList"),
+  faqQuestions: document.getElementById("faqQuestions"),
+  faqAnswer: document.getElementById("faqAnswer"),
+  addFaqButton: document.getElementById("addFaqButton"),
+  cancelFaqEditButton: document.getElementById("cancelFaqEditButton"),
+  faqList: document.getElementById("faqList"),
   toggleAdvancedMenuButton: document.getElementById("toggleAdvancedMenuButton"),
   advancedMenuPanel: document.getElementById("advancedMenuPanel"),
   menuLabel: document.getElementById("menuLabel"),
@@ -1265,13 +1271,7 @@ function buildModelMessages(modelId) {
   const templates = {
     standard: {
       welcome:
-        `Ol\u00e1! Seja bem-vindo ao ${businessName} \u2615\n\n` +
-        "Sou o assistente virtual e estou aqui pra te ajudar \u{1F60A}\n\n" +
-        "Voc\u00ea pode:\n\n" +
-        `${categoryMenuLines ? `${categoryMenuLines}\n` : ""}` +
-        `${dashboardState.tenant.links.length ? "\u2022 Acessar nossos links (digite: links)\n" : ""}` +
-        "\u2022 Falar com atendimento (digite: atendimento)\n\n" +
-        "\u00c9 s\u00f3 escrever o que voc\u00ea precisa \u{1F44D}",
+        `Ol\u00e1 Bem vindo(a) ao Atendimento de ${businessName}, como posso te ajudar hoje?`,
       fallback:
         "N\u00e3o entendi muito bem \u{1F605}\n\n" +
         "Voc\u00ea pode me pedir assim:\n\n" +
@@ -1514,18 +1514,22 @@ function toggleAdvancedMenu(forceOpen) {
 
 function getEffectiveMessages() {
   ensureBotProfileState();
+  const modelMessages = buildModelMessages(dashboardState.tenant.botModel === "custom" ? "standard" : dashboardState.tenant.botModel);
 
   if (dashboardState.tenant.botModel === "custom") {
     return {
-      welcome: dashboardState.tenant.messages.welcome || buildModelMessages("standard").welcome,
-      fallback: dashboardState.tenant.messages.fallback || buildModelMessages("standard").fallback,
-      handoff: dashboardState.tenant.messages.handoff || buildModelMessages("standard").handoff,
+      welcome: dashboardState.tenant.messages.welcome || modelMessages.welcome,
+      fallback: dashboardState.tenant.messages.fallback || modelMessages.fallback,
+      handoff: dashboardState.tenant.messages.handoff || modelMessages.handoff,
       audio: dashboardState.tenant.messages.audio || null
     };
   }
 
   return {
-    ...buildModelMessages(dashboardState.tenant.botModel),
+    ...modelMessages,
+    welcome: dashboardState.tenant.messages.welcome || modelMessages.welcome,
+    fallback: dashboardState.tenant.messages.fallback || modelMessages.fallback,
+    handoff: dashboardState.tenant.messages.handoff || modelMessages.handoff,
     audio: dashboardState.tenant.messages.audio || null
   };
 }
@@ -1739,6 +1743,14 @@ function resetLinkForm() {
   dashboardElements.linkDescription.value = "";
   dashboardElements.addLinkButton.textContent = "Adicionar link";
   dashboardElements.cancelLinkEditButton.classList.add("hidden-view");
+}
+
+function resetFaqForm() {
+  dashboardState.editingFaqId = "";
+  dashboardElements.faqQuestions.value = "";
+  dashboardElements.faqAnswer.value = "";
+  dashboardElements.addFaqButton.textContent = "Adicionar FAQ";
+  dashboardElements.cancelFaqEditButton.classList.add("hidden-view");
 }
 
 function resetPasswordForm() {
@@ -2165,6 +2177,52 @@ function renderLinksList() {
     ));
 
     dashboardElements.linksList.appendChild(listItem);
+  });
+}
+
+function getFaqQuestions(item = {}) {
+  const questions = [];
+
+  if (item.pergunta) {
+    questions.push(item.pergunta);
+  }
+
+  if (Array.isArray(item.perguntas)) {
+    questions.push(...item.perguntas);
+  } else if (item.perguntas) {
+    questions.push(item.perguntas);
+  }
+
+  return Array.from(new Set(questions.map((question) => String(question || "").trim()).filter(Boolean)));
+}
+
+function renderFaqList() {
+  dashboardElements.faqList.innerHTML = "";
+  const faqItems = dashboardState.tenant.faq || [];
+
+  if (!faqItems.length) {
+    dashboardElements.faqList.innerHTML = '<li class="item-card"><p>Nenhum FAQ cadastrado ainda.</p></li>';
+    return;
+  }
+
+  faqItems.forEach((item) => {
+    const questions = getFaqQuestions(item);
+    const listItem = document.createElement("li");
+    listItem.className = "item-card";
+    listItem.innerHTML = `
+      <div>
+        <h4>${KiagendaApp.escapeHtml(questions[0] || "Pergunta sem titulo")}</h4>
+        <p><strong>Variacoes:</strong> ${KiagendaApp.escapeHtml(questions.join(", ") || "-")}</p>
+        <p>${KiagendaApp.escapeHtml(item.resposta || "")}</p>
+      </div>
+    `;
+
+    listItem.appendChild(renderListActions(
+      () => startFaqEdit(item.id),
+      () => removeFaq(item.id)
+    ));
+
+    dashboardElements.faqList.appendChild(listItem);
   });
 }
 
@@ -2741,6 +2799,7 @@ function renderCatalog() {
 
 function renderLinks() {
   renderLinksList();
+  renderFaqList();
   syncMenuLinkSelect();
 }
 
@@ -3057,6 +3116,37 @@ function removeLink(linkId) {
   renderAll();
 }
 
+function parseFaqQuestions(value) {
+  return String(value || "")
+    .split(/\r?\n|;/)
+    .map((question) => question.trim())
+    .filter(Boolean);
+}
+
+function startFaqEdit(faqId) {
+  const faqItem = (dashboardState.tenant.faq || []).find((item) => item.id === faqId);
+
+  if (!faqItem) {
+    return;
+  }
+
+  dashboardState.editingFaqId = faqId;
+  dashboardElements.faqQuestions.value = getFaqQuestions(faqItem).join("\n");
+  dashboardElements.faqAnswer.value = faqItem.resposta || "";
+  dashboardElements.addFaqButton.textContent = "Salvar alteracoes";
+  dashboardElements.cancelFaqEditButton.classList.remove("hidden-view");
+}
+
+function removeFaq(faqId) {
+  dashboardState.tenant.faq = (dashboardState.tenant.faq || []).filter((item) => item.id !== faqId);
+
+  if (dashboardState.editingFaqId === faqId) {
+    resetFaqForm();
+  }
+
+  renderAll();
+}
+
 function upsertLink() {
   const nextLink = {
     id: dashboardState.editingLinkId || `link_${Date.now()}`,
@@ -3079,6 +3169,38 @@ function upsertLink() {
   }
 
   resetLinkForm();
+  renderAll();
+}
+
+function upsertFaq() {
+  const perguntas = parseFaqQuestions(dashboardElements.faqQuestions.value);
+  const resposta = dashboardElements.faqAnswer.value.trim();
+
+  if (!perguntas.length) {
+    throw new Error("Informe pelo menos uma pergunta para o FAQ.");
+  }
+
+  if (!resposta) {
+    throw new Error("Informe a resposta do FAQ.");
+  }
+
+  const nextFaq = {
+    id: dashboardState.editingFaqId || `faq_${Date.now()}`,
+    pergunta: perguntas[0],
+    perguntas,
+    resposta
+  };
+  const faqItems = dashboardState.tenant.faq || [];
+  const existingIndex = faqItems.findIndex((item) => item.id === nextFaq.id);
+
+  if (existingIndex >= 0) {
+    faqItems[existingIndex] = nextFaq;
+  } else {
+    faqItems.push(nextFaq);
+  }
+
+  dashboardState.tenant.faq = faqItems;
+  resetFaqForm();
   renderAll();
 }
 
@@ -3208,6 +3330,7 @@ function buildPayload() {
     services: dashboardState.tenant.services,
     partnerships: dashboardState.tenant.partnerships || [],
     links: dashboardState.tenant.links,
+    faq: dashboardState.tenant.faq || [],
     advancedOptions: dashboardState.tenant.advancedOptions || [],
     menu: buildAutomaticMenu(dashboardState.tenant.botModel),
     messages: getEffectiveMessages(),
@@ -3677,6 +3800,7 @@ async function loadDashboard() {
   dashboardState.tenant = tenant;
   dashboardState.tenant.botModel = normalizePanelBotModel(tenant.botModel);
   dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
+  dashboardState.tenant.faq = Array.isArray(tenant.faq) ? tenant.faq : [];
   dashboardState.tenant.categories = Array.isArray(tenant.categories) ? tenant.categories : [];
   dashboardState.tenant.partnerships = Array.isArray(tenant.partnerships) ? tenant.partnerships : [];
   dashboardState.tenant.botProfile = tenant.botProfile || null;
@@ -3713,6 +3837,7 @@ async function loadDashboard() {
   resetServiceForm();
   resetPartnershipForm();
   resetLinkForm();
+  resetFaqForm();
   resetMenuForm();
   renderAll();
   showSection(getSavedSection());
@@ -3762,6 +3887,8 @@ dashboardElements.cancelServiceEditButton.addEventListener("click", resetService
 dashboardElements.cancelPartnershipEditButton.addEventListener("click", resetPartnershipForm);
 dashboardElements.addLinkButton.addEventListener("click", () => runAction(upsertLink));
 dashboardElements.cancelLinkEditButton.addEventListener("click", resetLinkForm);
+dashboardElements.addFaqButton.addEventListener("click", () => runAction(upsertFaq));
+dashboardElements.cancelFaqEditButton.addEventListener("click", resetFaqForm);
 dashboardElements.toggleAdvancedMenuButton.addEventListener("click", () => toggleAdvancedMenu());
 dashboardElements.cancelMenuEditButton.addEventListener("click", resetMenuForm);
 dashboardElements.addMenuButton.addEventListener("click", () => runAction(addAdvancedMenuItem));

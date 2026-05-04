@@ -144,12 +144,12 @@ function buildProfileCollectionRetryMessage() {
 function buildWelcomeMessage(config) {
   const customWelcome = String(config.messages?.welcome || "").trim();
 
-  if (customWelcome && !isServicesBotProfile(config)) {
+  if (customWelcome) {
     return interpolate(config.messages.welcome, config);
   }
 
   if (isServicesBotProfile(config)) {
-    return `Oi! Tudo bem? Me conta rapidinho como posso te ajudar hoje.`;
+    return `Ola Bem vindo(a) ao Atendimento de ${config.business.name || "nossa equipe"}, como posso te ajudar hoje?`;
   }
 
   if (isKiagendaBot(config)) {
@@ -415,13 +415,20 @@ function buildHandoffMessage(config) {
   return "Claro, vou encaminhar para o atendimento. Assim que possivel alguem te responde por aqui.";
 }
 
+function buildIdentityMessage(config) {
+  const businessName = config.business?.name || "empresa";
+  const attendantName = config.business?.attendantName || "atendimento";
+
+  return `Sou o assistente virtual do ${businessName}. Posso te ajudar por aqui e, se precisar, tambem posso chamar ${attendantName} para continuar o atendimento. Como posso te ajudar hoje?`;
+}
+
 function buildFallbackMessage(config) {
   if (config.messages.fallback && !isServicesBotProfile(config)) {
     return interpolate(config.messages.fallback, config);
   }
 
   if (isServicesBotProfile(config)) {
-    return buildMainServiceQuestion(config);
+    return "Entendi. Me conta um pouco melhor como posso te ajudar?";
   }
 
   if (isKiagendaBot(config)) {
@@ -465,6 +472,7 @@ module.exports = {
   buildFallbackMessage,
   buildServiceDetailMessage,
   buildHandoffMessage,
+  buildIdentityMessage,
   buildLinksMessage,
   buildLinkChoiceHelpMessage,
   buildLinkMatchesMessage,

@@ -636,6 +636,30 @@
           </div>
 
           <ul id="linksList" class="item-list"></ul>
+
+          <div class="section-divider"></div>
+
+          <p class="eyebrow">FAQ do bot</p>
+          <h3>Perguntas e respostas prioritarias</h3>
+          <p class="muted-copy">Quando uma mensagem bater com uma pergunta cadastrada aqui, o bot responde isso antes de usar IA, menu ou outras regras.</p>
+
+          <div class="field-grid">
+            <label class="full-width">
+              Perguntas que ativam a resposta
+              <textarea id="faqQuestions" placeholder="Uma pergunta por linha. Ex.:&#10;vc e o Ronaldo?&#10;e humano?&#10;estou falando com quem?"></textarea>
+            </label>
+            <label class="full-width">
+              Resposta do bot
+              <textarea id="faqAnswer" placeholder="Ex.: Sou o assistente virtual do Ronaldo Webnegocios. Posso te ajudar por aqui e, se precisar, encaminho para uma pessoa do atendimento."></textarea>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="addFaqButton" class="primary-button" type="button">Adicionar FAQ</button>
+            <button id="cancelFaqEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+          </div>
+
+          <ul id="faqList" class="item-list"></ul>
         </article>
       </section>
 

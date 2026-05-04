@@ -7,6 +7,7 @@ const {
   buildDeliveryPickupMessage,
   buildFallbackMessage,
   buildHandoffMessage,
+  buildIdentityMessage,
   buildLinkChoiceHelpMessage,
   buildLinkMatchesMessage,
   buildLinksMessage,
@@ -27,6 +28,7 @@ const {
   hasCustomerProfile
 } = require("./messageBuilder");
 const { matchIntent } = require("./intentMatcher");
+const { matchFAQ } = require("./faqMatcher");
 const { detectIntentWithAI } = require("../services/aiIntentService");
 const { detectIntentWithGemini } = require("../services/geminiIntentService");
 const { canUseFeature, normalizePlan, normalizeSubscriptionStatus } = require("../services/featureAccessService");
@@ -598,6 +600,17 @@ function buildReplyStatePatch(state, message, reply, extra = {}) {
   };
 }
 
+function interpolateTenantText(text, config = {}) {
+  const businessName = config?.business?.name || "empresa";
+  const attendantName = config?.business?.attendantName || "Atendimento";
+
+  return String(text || "")
+    .replace(/\{\{\s*business\.name\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
+    .replace(/\{\{\s*attendantName\s*\}\}/gi, attendantName)
+    .replace(/\{\{\s*business\.attendantName\s*\}\}/gi, attendantName);
+}
+
 function getBotControlCommand(message) {
   const text = normalizeText(message);
 
@@ -1017,6 +1030,8 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
     case "links":
     case "links_importantes":
       return { intent: "menu", menuAction: "links", source: "ai" };
+    case "duvida_identidade":
+      return { intent: "duvida_identidade", source: "ai" };
     case "atendimento":
     case "falar_com_humano":
     case "suporte_cliente":
@@ -1043,9 +1058,10 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
 
       return { intent: "fora_do_escopo", source: "ai" };
     case "fora_do_escopo":
+    case "mensagem_confusa":
+      return { intent: "mensagem_confusa", source: "ai" };
     case "agradecimento":
     case "despedida":
-    case "mensagem_confusa":
     default:
       return { intent: "fora_do_escopo", source: "ai" };
   }
@@ -1077,6 +1093,8 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
     case "links":
     case "links_importantes":
       return { intent: "menu", menuAction: "links", source: "gemini", aiConfidence: aiDecision.confidence };
+    case "duvida_identidade":
+      return { intent: "duvida_identidade", source: "gemini", aiConfidence: aiDecision.confidence };
     case "atendimento":
     case "falar_com_humano":
     case "suporte_cliente":
@@ -1114,6 +1132,8 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
         aiConfidence: aiDecision.confidence
       };
     }
+    case "mensagem_confusa":
+      return { intent: "mensagem_confusa", source: "gemini", aiConfidence: aiDecision.confidence };
     case "fora_do_escopo":
     default:
       return { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
@@ -1246,6 +1266,35 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       intent: "atendimento_humano_pausado",
       reply: "",
       state: pausedState
+    };
+  }
+
+  const faqMatch = matchFAQ(message, config?.faq || []);
+
+  if (faqMatch) {
+    console.log("FAQ MATCH:", faqMatch.pergunta);
+    const reply = interpolateTenantText(faqMatch.resposta, config);
+    const faqState = setState(
+      tenantId,
+      contactId,
+      buildReplyStatePatch(state, message, reply, {
+        currentState: "menu",
+        currentStage: "faq",
+        fallbackCount: 0,
+        outOfScopeCount: 0,
+        handoffUntil: null,
+        humanRequested: false,
+        lastBotMessageType: "faq"
+      }),
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "faq",
+      reply,
+      state: faqState
     };
   }
 
@@ -1876,6 +1925,22 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     }
     case "entrega_retirada":
       reply = buildDeliveryPickupMessage(config);
+      break;
+    case "duvida_identidade":
+      reply = buildIdentityMessage(config);
+      nextState.currentState = "menu";
+      nextState.currentStage = "context_active";
+      nextState.humanRequested = false;
+      nextState.handoffUntil = null;
+      nextState.lastBotMessageType = "identity";
+      break;
+    case "mensagem_confusa":
+      reply = buildFallbackMessage(config);
+      nextState.currentState = "menu";
+      nextState.currentStage = "context_active";
+      nextState.humanRequested = false;
+      nextState.handoffUntil = null;
+      nextState.lastBotMessageType = "fallback";
       break;
     case "atendimento_humano":
       if (isKiagendaBot(config)) {

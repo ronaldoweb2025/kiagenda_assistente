@@ -362,6 +362,27 @@ function normalizeLinks(links) {
     .filter((link) => link.title || link.url);
 }
 
+function normalizeFaqItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => {
+      const pergunta = normalizeString(item?.pergunta || item?.question);
+      const rawPerguntas = item?.perguntas || item?.questions || (pergunta ? [pergunta] : []);
+      const perguntas = normalizeStringList(Array.isArray(rawPerguntas) ? rawPerguntas : [rawPerguntas]);
+
+      return {
+        id: normalizeString(item?.id) || `faq_${index + 1}`,
+        pergunta: pergunta || perguntas[0] || "",
+        perguntas,
+        resposta: normalizeString(item?.resposta || item?.answer)
+      };
+    })
+    .filter((item) => item.resposta && (item.pergunta || item.perguntas.length));
+}
+
 function normalizeAdvancedOptions(items) {
   if (!Array.isArray(items)) {
     return [];
@@ -469,6 +490,7 @@ function normalizeTenant(input = {}) {
       description: normalizeString(input?.business?.description)
     },
     links: normalizeLinks(input?.links),
+    faq: normalizeFaqItems(input?.faq),
     advancedOptions: normalizeAdvancedOptions(input?.advancedOptions),
     categories: migratedTenant.categories,
     products: normalizeCatalogItems(migratedTenant.products, "product"),
@@ -549,6 +571,7 @@ function mergeTenant(baseTenant, partialTenant) {
       ...(partialTenant.business || {})
     },
     links: Array.isArray(partialTenant.links) ? partialTenant.links : baseTenant.links,
+    faq: Array.isArray(partialTenant.faq) ? partialTenant.faq : baseTenant.faq,
     advancedOptions: Array.isArray(partialTenant.advancedOptions)
       ? partialTenant.advancedOptions
       : baseTenant.advancedOptions,

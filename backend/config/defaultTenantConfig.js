@@ -48,6 +48,7 @@ const defaultTenantConfig = {
   services: [],
   partnerships: [],
   links: [],
+  faq: [],
   advancedOptions: [],
   menu: [
     {
@@ -110,6 +111,7 @@ const defaultTenantConfig = {
       "- Nunca exija nome e cidade no inicio.\n" +
       "- Nunca bloqueie o atendimento por falta de dados cadastrais.\n" +
       "- Nunca repita exatamente o mesmo menu ou a mesma pergunta.\n" +
+      "- Nunca encaminhe para atendimento humano apenas por duvida simples ou curiosidade do usuario.\n" +
       "- Pergunte no maximo uma coisa por resposta.\n" +
       "- Se um servico tiver preco cadastrado, informe o preco exatamente como esta.\n" +
       "- Se um servico nao tiver preco cadastrado, trate como sob consulta.\n" +
