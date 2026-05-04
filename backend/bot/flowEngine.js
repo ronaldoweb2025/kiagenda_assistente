@@ -10,6 +10,7 @@ const {
   buildLinkChoiceHelpMessage,
   buildLinkMatchesMessage,
   buildLinksMessage,
+  buildMainServiceQuestion,
   buildMenuMessage,
   buildPersonalizedMenuMessage,
   buildProfileCollectionPrompt,
@@ -39,7 +40,7 @@ const {
 } = require("../utils/catalogCategories");
 
 function isHandoffActive(state) {
-  return state.handoffUntil && state.handoffUntil > Date.now();
+  return Boolean(state?.humanRequested) || (state.handoffUntil && state.handoffUntil > Date.now());
 }
 
 function findLinkById(config, linkId) {
@@ -392,6 +393,238 @@ function cleanProfileValue(value) {
     .replace(/^[\s\-:,.]+|[\s\-:,.]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function capitalizeWords(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b([a-z\u00c0-\u024f])/gi, (letter) => letter.toUpperCase());
+}
+
+function stripTrailingLocationNoise(value) {
+  return cleanProfileValue(
+    String(value || "")
+      .replace(/\b(?:est|estado|uf)\s+(?:de\s+)?[a-z]{2}\b.*$/i, "")
+      .replace(/\b(?:sp|rj|mg|es|pr|sc|rs|ba|pe|ce|go|df|mt|ms|pa|am|ma|pb|rn|al|se|pi|ro|rr|ap|ac|to)\b.*$/i, "")
+  );
+}
+
+function extractBasicData(message) {
+  const rawMessage = String(message || "").trim();
+  const extracted = {};
+
+  if (!rawMessage) {
+    return extracted;
+  }
+
+  const namePatterns = [
+    /\bmeu nome (?:e|eh|é)\s+(.+?)(?=\s+(?:moro em|sou de|estou em|falo de|cidade|regiao)\b|[,.;]|$)/i,
+    /\bme chamo\s+(.+?)(?=\s+(?:moro em|sou de|estou em|falo de|cidade|regiao)\b|[,.;]|$)/i,
+    /^(?:eu\s+)?sou\s+(?:a|o)?\s*([a-z\u00c0-\u024f]+(?:\s+[a-z\u00c0-\u024f]+){0,2})(?=\s+(?:de|moro em|sou de|estou em|falo de)\b|[,.;]|$)/i,
+    /^([a-z\u00c0-\u024f]+(?:\s+[a-z\u00c0-\u024f]+){0,2})\s+(?:moro em|sou de|estou em|falo de)\b/i
+  ];
+
+  for (const pattern of namePatterns) {
+    const match = rawMessage.match(pattern);
+    const candidate = cleanProfileValue(match?.[1] || "");
+
+    if (candidate && isLikelyPersonName(candidate)) {
+      extracted.customerName = capitalizeWords(candidate);
+      break;
+    }
+  }
+
+  const cityPatterns = [
+    /\b(?:moro em|sou de|estou em|falo de|cidade de|regiao de)\s+(.+?)(?=\s+(?:est|estado|uf)\s+(?:de\s+)?[a-z]{2}\b|[,.;]|$)/i,
+    /\b(?:moro em|sou de|estou em|falo de)\s+(.+)$/i
+  ];
+
+  for (const pattern of cityPatterns) {
+    const match = rawMessage.match(pattern);
+    const candidate = stripTrailingLocationNoise(match?.[1] || "");
+
+    if (candidate && isLikelyRegionToken(candidate)) {
+      extracted.customerRegion = capitalizeWords(candidate);
+      extracted.city = extracted.customerRegion;
+      break;
+    }
+  }
+
+  const stateMatch = rawMessage.match(/\b(?:est|estado|uf)\s+(?:de\s+)?([a-z]{2})\b|\b(SP|RJ|MG|ES|PR|SC|RS|BA|PE|CE|GO|DF|MT|MS|PA|AM|MA|PB|RN|AL|SE|PI|RO|RR|AP|AC|TO)\b/i);
+  const stateValue = stateMatch?.[1] || stateMatch?.[2] || "";
+
+  if (stateValue) {
+    extracted.state = stateValue.toUpperCase();
+  }
+
+  return extracted;
+}
+
+function mergeExtractedData(state, extracted = {}) {
+  const nextState = { ...state };
+
+  if (extracted.customerName && !nextState.customerName) {
+    nextState.customerName = extracted.customerName;
+  }
+
+  if (extracted.customerRegion && !nextState.customerRegion) {
+    nextState.customerRegion = extracted.customerRegion;
+  }
+
+  if (extracted.city && !nextState.city) {
+    nextState.city = extracted.city;
+  }
+
+  if (extracted.state && !nextState.state) {
+    nextState.state = extracted.state;
+  }
+
+  nextState.collectedData = {
+    ...(nextState.collectedData || {}),
+    ...Object.fromEntries(Object.entries(extracted).filter(([, value]) => Boolean(value)))
+  };
+
+  return nextState;
+}
+
+function hasNewExtractedData(state, extracted = {}) {
+  return Boolean(
+    (extracted.customerName && !state.customerName) ||
+      (extracted.customerRegion && !state.customerRegion) ||
+      (extracted.city && !state.city) ||
+      (extracted.state && !state.state)
+  );
+}
+
+function getFirstName(state) {
+  return String(state?.customerName || "").split(/\s+/).filter(Boolean)[0] || "";
+}
+
+function buildCollectedDataReply(config, state) {
+  const parts = [];
+  const firstName = getFirstName(state);
+
+  if (firstName) {
+    parts.push(`Prazer, ${firstName}.`);
+  }
+
+  if (state.customerRegion) {
+    parts.push(`${state.customerRegion} anotado por aqui.`);
+  }
+
+  parts.push(buildMainServiceQuestion(config));
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function buildOutOfScopeReply(config, state) {
+  if (Number(state?.outOfScopeCount || 0) >= 2) {
+    return `Esse assunto foge um pouco do atendimento por aqui. Posso te ajudar com nossas opcoes ou chamar uma pessoa do atendimento.`;
+  }
+
+  return `Eu nao consigo te ajudar bem com esse assunto por aqui. Sou o assistente da ${config.business?.name || "empresa"} e posso te ajudar com ${buildMainServiceQuestion(config).replace(/^Posso te ajudar com\s*/i, "").replace(/\.$/, "")}`;
+}
+
+function normalizeForComparison(value) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function similarityScore(a, b) {
+  const left = normalizeForComparison(a);
+  const right = normalizeForComparison(b);
+
+  if (!left || !right) {
+    return 0;
+  }
+
+  if (left === right) {
+    return 1;
+  }
+
+  const leftWords = new Set(left.split(/\s+/));
+  const rightWords = new Set(right.split(/\s+/));
+  const intersection = [...leftWords].filter((word) => rightWords.has(word)).length;
+  const union = new Set([...leftWords, ...rightWords]).size;
+
+  return union ? intersection / union : 0;
+}
+
+function avoidRepetition(reply, state, config) {
+  let safeReply = String(reply || "").trim();
+
+  if (!safeReply) {
+    return safeReply;
+  }
+
+  if ((state.customerName || state.customerRegion) && /para (?:eu )?continuar|envie.*nome|nome.*cidade|cidade.*regiao/i.test(safeReply)) {
+    safeReply = buildMainServiceQuestion(config);
+  }
+
+  if (similarityScore(safeReply, state.lastBotMessage) >= 0.82) {
+    if (state.conversationState?.lastIntent === "servico" && state.conversationState?.lastSuggestedService) {
+      safeReply = "Perfeito. Me conta uma coisa: voce quer entender melhor como funciona ou prefere falar com o atendimento?";
+    } else {
+      safeReply = buildMainServiceQuestion(config);
+    }
+  }
+
+  return safeReply;
+}
+
+function appendRecentMessages(state, userMessage, botMessage) {
+  const recentMessages = Array.isArray(state?.recentMessages) ? state.recentMessages.slice(-8) : [];
+  const now = new Date().toISOString();
+
+  if (userMessage) {
+    recentMessages.push({ role: "user", message: String(userMessage), at: now });
+  }
+
+  if (botMessage) {
+    recentMessages.push({ role: "bot", message: String(botMessage), at: now });
+  }
+
+  return recentMessages.slice(-10);
+}
+
+function buildReplyStatePatch(state, message, reply, extra = {}) {
+  return {
+    ...extra,
+    lastUserMessage: String(message || ""),
+    lastBotMessage: String(reply || ""),
+    recentMessages: appendRecentMessages(state, message, reply)
+  };
+}
+
+function getBotControlCommand(message) {
+  const text = normalizeText(message);
+
+  if (text === "bot assumir" || text === "atendimento finalizado") {
+    return "resume_bot";
+  }
+
+  if (text === "bot parar") {
+    return "stop_bot";
+  }
+
+  return "";
+}
+
+function isObviousOutOfScopeMessage(message) {
+  const text = normalizeText(message);
+
+  return [
+    "jogo",
+    "futebol",
+    "politica",
+    "receita",
+    "novela",
+    "noticia",
+    "quem ganhou",
+    "previsao do tempo"
+  ].some((term) => text.includes(term));
 }
 
 function isLikelyRegionToken(value) {
@@ -764,19 +997,34 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
   const partnershipCategory = findLegacyCategory(config, "partnerships");
 
   switch (aiIntent) {
+    case "saudacao":
+      return { intent: "saudacao", source: "ai" };
+    case "pedir_servicos":
+    case "site_landing_page":
+    case "trafego_pago":
+    case "google_meu_negocio":
+    case "seo_local":
+    case "portfolio":
+    case "prazo_entrega":
+      return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "produtos":
       return productCategory ? { intent: "ver_categoria", categoryId: productCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "servicos":
       return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "parcerias":
+    case "parceria_revenda":
       return partnershipCategory ? { intent: "ver_categoria", categoryId: partnershipCategory.id, source: "ai" } : { intent: "fora_do_escopo", source: "ai" };
     case "links":
+    case "links_importantes":
       return { intent: "menu", menuAction: "links", source: "ai" };
     case "atendimento":
+    case "falar_com_humano":
+    case "suporte_cliente":
       return { intent: "atendimento_humano", source: "ai" };
     case "entrega":
       return { intent: "entrega_retirada", source: "ai" };
     case "preco":
+    case "preco_orcamento":
       if (productCategory && productCategory.items.length && (!serviceCategory || !serviceCategory.items.length)) {
         return { intent: "ver_categoria", categoryId: productCategory.id, source: "ai" };
       }
@@ -795,6 +1043,9 @@ function mapAIIntentToFlowIntent(aiIntent, config) {
 
       return { intent: "fora_do_escopo", source: "ai" };
     case "fora_do_escopo":
+    case "agradecimento":
+    case "despedida":
+    case "mensagem_confusa":
     default:
       return { intent: "fora_do_escopo", source: "ai" };
   }
@@ -808,19 +1059,32 @@ function mapGeminiIntentToFlowIntent(aiDecision, config) {
   switch (aiDecision.intent) {
     case "saudacao":
       return { intent: "saudacao", source: "gemini", aiConfidence: aiDecision.confidence };
+    case "pedir_servicos":
+    case "site_landing_page":
+    case "trafego_pago":
+    case "google_meu_negocio":
+    case "seo_local":
+    case "portfolio":
+    case "prazo_entrega":
+      return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "produtos":
       return productCategory ? { intent: "ver_categoria", categoryId: productCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "servicos":
       return serviceCategory ? { intent: "ver_categoria", categoryId: serviceCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "parcerias":
+    case "parceria_revenda":
       return partnershipCategory ? { intent: "ver_categoria", categoryId: partnershipCategory.id, source: "gemini", aiConfidence: aiDecision.confidence } : { intent: "fora_do_escopo", source: "gemini", aiConfidence: aiDecision.confidence };
     case "links":
+    case "links_importantes":
       return { intent: "menu", menuAction: "links", source: "gemini", aiConfidence: aiDecision.confidence };
     case "atendimento":
+    case "falar_com_humano":
+    case "suporte_cliente":
       return { intent: "atendimento_humano", source: "gemini", aiConfidence: aiDecision.confidence };
     case "entrega":
       return { intent: "entrega_retirada", source: "gemini", aiConfidence: aiDecision.confidence };
     case "preco":
+    case "preco_orcamento":
       return {
         ...mapAIIntentToFlowIntent("preco", config),
         source: "gemini",
@@ -910,8 +1174,98 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     };
   }
 
-  const state = getState(tenantId, contactId, config.settings.stateTTL);
-  const conversationState = getConversationState(state);
+  let state = getState(tenantId, contactId, config.settings.stateTTL);
+  let conversationState = getConversationState(state);
+  const controlCommand = getBotControlCommand(message);
+
+  if (controlCommand === "stop_bot") {
+    const reply = "Bot pausado para este contato. O atendimento humano pode continuar por aqui.";
+    const stoppedState = setState(
+      tenantId,
+      contactId,
+      buildReplyStatePatch(state, message, reply, {
+        currentState: "handoff",
+        currentStage: "human_handoff",
+        humanRequested: true,
+        handoffUntil: Date.now() + config.settings.handoffTimeout * 60 * 1000,
+        lastBotMessageType: "bot_stopped"
+      }),
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "bot_parado",
+      reply,
+      state: stoppedState
+    };
+  }
+
+  if (controlCommand === "resume_bot") {
+    const reply = "Bot reativado para este contato. Posso continuar o atendimento por aqui.";
+    const resumedState = setState(
+      tenantId,
+      contactId,
+      buildReplyStatePatch(state, message, reply, {
+        currentState: "idle",
+        currentStage: "idle",
+        humanRequested: false,
+        handoffUntil: null,
+        fallbackCount: 0,
+        outOfScopeCount: 0,
+        lastBotMessageType: "bot_resumed"
+      }),
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "bot_assumir",
+      reply,
+      state: resumedState
+    };
+  } else if (state.humanRequested) {
+    const pausedState = setState(
+      tenantId,
+      contactId,
+      {
+        currentState: "handoff",
+        currentStage: "human_handoff",
+        humanRequested: true,
+        lastUserMessage: String(message || ""),
+        recentMessages: appendRecentMessages(state, message, "")
+      },
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "atendimento_humano_pausado",
+      reply: "",
+      state: pausedState
+    };
+  }
+
+  const extracted = extractBasicData(message);
+
+  if (hasNewExtractedData(state, extracted) || state.currentState === "aguardando_customer_profile") {
+    state = setState(
+      tenantId,
+      contactId,
+      {
+        ...mergeExtractedData(state, extracted),
+        currentState: state.currentState === "aguardando_customer_profile" ? "idle" : state.currentState,
+        currentStage: state.currentStage || "idle",
+        lastUserMessage: String(message || ""),
+        recentMessages: appendRecentMessages(state, message, "")
+      },
+      config.settings.stateTTL
+    );
+    conversationState = getConversationState(state);
+  }
 
   if (isKiagendaBot(config) && isScheduleIntentMessage(message)) {
     const scheduleState = setState(
@@ -960,6 +1314,39 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       intent: "reset_contexto",
       reply: buildMenuMessage(config),
       state: resetState
+    };
+  }
+
+  if (matchIntent(message, config).intent === "atendimento_humano") {
+    const reply = buildHandoffMessage(config);
+    const handoffState = setState(
+      tenantId,
+      contactId,
+      buildReplyStatePatch(state, message, reply, {
+        currentState: "handoff",
+        currentStage: "human_handoff",
+        fallbackCount: 0,
+        outOfScopeCount: 0,
+        humanRequested: true,
+        handoffUntil: Date.now() + config.settings.handoffTimeout * 60 * 1000,
+        lastBotMessageType: "handoff",
+        ...buildConversationStatePatch({
+          stage: "",
+          lastSuggestedService: conversationState.lastSuggestedService,
+          lastIntent: conversationState.lastIntent,
+          rejectedServices: conversationState.rejectedServices
+        })
+      }),
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "atendimento_humano",
+      reply,
+      mediaMessages: buildHandoffAudioMessages(config),
+      state: handoffState
     };
   }
 
@@ -1323,77 +1710,44 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     );
   }
 
-  if (!hasCustomerProfile(state)) {
-    if (state.currentState === "aguardando_customer_profile") {
-      const profile = parseCustomerProfile(message);
+  if ((extracted.customerName || extracted.customerRegion) && !isInterestSignalMessage(message) && !isBudgetRequestMessage(message) && !isServiceContextQuestion(message)) {
+    const textWithoutProfile = normalizeText(message)
+      .replace(/meu nome (?:e|eh|é).+?(?=moro em|sou de|estou em|falo de|$)/i, "")
+      .replace(/me chamo.+?(?=moro em|sou de|estou em|falo de|$)/i, "")
+      .replace(/(?:moro em|sou de|estou em|falo de).+$/i, "")
+      .trim();
 
-      if (!profile) {
-        const retryState = setState(
-          tenantId,
-          contactId,
-          {
-            currentState: "aguardando_customer_profile",
-            fallbackCount: state.fallbackCount + 1,
-            handoffUntil: null,
-            lastBotMessageType: "customer_profile_retry"
-          },
-          config.settings.stateTTL
-        );
-
-        return {
-          tenantId,
-          contactId,
-          intent: "coleta_cadastro_incompleta",
-          reply: buildProfileCollectionRetryMessage(),
-          state: retryState
-        };
-      }
-
+    if (!textWithoutProfile || textWithoutProfile.split(/\s+/).length <= 2) {
+      const reply = avoidRepetition(buildCollectedDataReply(config, state), state, config);
       const collectedState = setState(
         tenantId,
         contactId,
-        {
+        buildReplyStatePatch(state, message, reply, {
           currentState: "menu",
+          currentStage: "context_active",
           fallbackCount: 0,
+          outOfScopeCount: 0,
           handoffUntil: null,
-          lastBotMessageType: "customer_profile_collected",
-          customerName: profile.customerName,
-          customerRegion: profile.customerRegion
-        },
+          lastBotMessageType: "customer_profile_collected"
+        }),
         config.settings.stateTTL
       );
 
       return {
         tenantId,
         contactId,
-        intent: "coleta_cadastro_concluida",
-        reply: buildPersonalizedMenuMessage(config, collectedState),
+        intent: "dados_basicos_coletados",
+        reply,
         state: collectedState
       };
     }
-
-    const welcomeState = setState(
-      tenantId,
-      contactId,
-      {
-        currentState: "aguardando_customer_profile",
-        fallbackCount: 0,
-        handoffUntil: null,
-        lastBotMessageType: "customer_profile_prompt"
-      },
-      config.settings.stateTTL
-    );
-
-    return {
-      tenantId,
-      contactId,
-      intent: "coleta_cadastro_inicial",
-      reply: buildProfileCollectionPrompt(config),
-      state: welcomeState
-    };
   }
 
-  const catalogChoiceResult = tryResolveCatalogChoice({ state, message, config });
+  const preCatalogIntent = matchIntent(message, config);
+  const canUseCatalogChoice =
+    !isObviousOutOfScopeMessage(message) &&
+    ["fora_do_escopo"].includes(preCatalogIntent.intent);
+  const catalogChoiceResult = canUseCatalogChoice ? tryResolveCatalogChoice({ state, message, config }) : null;
 
   if (catalogChoiceResult) {
     const savedState = setState(tenantId, contactId, catalogChoiceResult.nextState, config.settings.stateTTL);
@@ -1433,7 +1787,9 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
 
   switch (matchedIntent.intent) {
     case "saudacao":
-      reply = buildWelcomeMessage(config);
+      reply = state.lastBotMessageType === "welcome" || similarityScore(state.lastBotMessage, buildWelcomeMessage(config)) >= 0.7
+        ? buildMainServiceQuestion(config)
+        : buildWelcomeMessage(config);
       nextState.currentState = "menu";
       nextState.lastBotMessageType = "welcome";
       break;
@@ -1529,6 +1885,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       } else {
         reply = buildHandoffMessage(config);
         nextState.currentState = "handoff";
+        nextState.currentStage = "human_handoff";
+        nextState.humanRequested = true;
         nextState.handoffUntil = Date.now() + config.settings.handoffTimeout * 60 * 1000;
         nextState.conversationState = {
           stage: "",
@@ -1545,18 +1903,29 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       break;
     case "fora_do_escopo":
     default:
-      reply = buildFallbackMessage(config);
+      nextState.outOfScopeCount = Number(state.outOfScopeCount || 0) + 1;
+      reply = buildOutOfScopeReply(config, nextState);
       break;
   }
 
-  const savedState = setState(tenantId, contactId, nextState, config.settings.stateTTL);
+  const safeReply = avoidRepetition(reply, state, config);
+  const savedState = setState(
+    tenantId,
+    contactId,
+    buildReplyStatePatch(state, message, safeReply, {
+      ...nextState,
+      currentStage: nextState.currentStage || nextState.conversationState?.stage || nextState.currentState || "idle",
+      outOfScopeCount: matchedIntent.intent === "fora_do_escopo" ? nextState.outOfScopeCount : 0
+    }),
+    config.settings.stateTTL
+  );
 
   return {
     tenantId,
     contactId,
     intent: matchedIntent.intent,
     aiConfidence: matchedIntent.aiConfidence,
-    reply,
+    reply: safeReply,
     mediaMessages:
       matchedIntent.intent === "atendimento_humano"
         ? buildHandoffAudioMessages(config)

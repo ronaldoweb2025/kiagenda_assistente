@@ -3,12 +3,20 @@ const { readTenantStates, writeTenantStates } = require("../tenancy/tenantStateS
 function getDefaultState() {
   return {
     currentState: "idle",
+    currentStage: "idle",
     lastInteractionAt: null,
     fallbackCount: 0,
+    outOfScopeCount: 0,
     handoffUntil: null,
+    humanRequested: false,
     lastBotMessageType: null,
+    lastBotMessage: "",
     customerName: "",
     customerRegion: "",
+    city: "",
+    state: "",
+    collectedData: {},
+    recentMessages: [],
     conversationState: {
       stage: "",
       lastSuggestedService: "",

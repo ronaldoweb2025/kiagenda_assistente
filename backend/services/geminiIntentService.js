@@ -3,6 +3,21 @@ const { readBotModelSettings } = require("../tenancy/botModelSettingsStore");
 
 const ALLOWED_INTENTS = [
   "saudacao",
+  "pedir_servicos",
+  "site_landing_page",
+  "trafego_pago",
+  "google_meu_negocio",
+  "seo_local",
+  "preco_orcamento",
+  "portfolio",
+  "prazo_entrega",
+  "suporte_cliente",
+  "parceria_revenda",
+  "links_importantes",
+  "falar_com_humano",
+  "agradecimento",
+  "despedida",
+  "mensagem_confusa",
   "produtos",
   "servicos",
   "parcerias",
@@ -144,7 +159,7 @@ async function detectIntentWithGemini(message, tenantConfig = {}, runtimeContext
                   "Nao converse com o usuario. " +
                   "Nao crie informacoes. " +
                   `${String(modelConfig.promptBase || "").trim() ? `Considere estas regras do modelo:\n${String(modelConfig.promptBase).trim()}\n` : ""}` +
-                  "Use apenas estas intencoes: saudacao, produtos, servicos, parcerias, links, atendimento, entrega, preco, item_especifico, fora_do_escopo. " +
+                  "Use apenas estas intencoes: saudacao, pedir_servicos, site_landing_page, trafego_pago, google_meu_negocio, seo_local, preco_orcamento, portfolio, prazo_entrega, suporte_cliente, parceria_revenda, links_importantes, falar_com_humano, agradecimento, despedida, mensagem_confusa, produtos, servicos, parcerias, links, atendimento, entrega, preco, item_especifico, fora_do_escopo. " +
                   "Se o usuario mencionar algo parecido com um produto ou servico cadastrado, inclusive por palavra-chave, retorne item_especifico e o nome mais provavel. " +
                   "Exemplo: se existir um servico com keywords como site, website ou landing page, frases como quero site ou preciso de um site devem retornar item_especifico. " +
                   "Se nao tiver certeza, retorne fora_do_escopo."

@@ -121,64 +121,52 @@ function buildDynamicMenuLines(config) {
 
 function buildProfileCollectionPrompt(config) {
   return joinBlocks([
-    `Ola! Seja bem-vindo(a) ao ${config.business.name || "nosso negocio"}`,
-    "Sou um assistente, mas estou aqui para agilizar seu atendimento.",
-    "Para comecar, me diga:",
-    "- Seu nome\n- De qual cidade ou regiao voce esta falando"
+    `Oi! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
+    "Me conta rapidinho como posso te ajudar hoje."
   ]);
 }
 
 function buildPersonalizedMenuMessage(config, state) {
+  const firstName = String(state.customerName || "").split(/\s+/).filter(Boolean)[0] || state.customerName;
+  const serviceHint = buildMainServiceQuestion(config);
+
   return joinBlocks([
-    `Prazer, ${state.customerName}!`,
-    `Voce esta em ${state.customerRegion}, certo?`,
-    `Enquanto ${getAttendantLabel(config)} nao pode lhe atender no momento, eu vou te ajudar com as opcoes disponiveis por aqui.`,
-    "Agora me diga como posso te ajudar:",
-    buildMenuMessage(config)
+    firstName ? `Prazer, ${firstName}.` : "",
+    state.customerRegion ? `${state.customerRegion} anotado por aqui.` : "",
+    serviceHint
   ]);
 }
 
 function buildProfileCollectionRetryMessage() {
-  return joinBlocks([
-    "Para eu continuar, me envie estas duas informacoes na mesma mensagem:",
-    "- Seu nome\n- Sua cidade ou regiao"
-  ]);
+  return "Entendi mais ou menos. Voce quer ajuda com servicos, produtos, links ou atendimento?";
 }
 
 function buildWelcomeMessage(config) {
-  if (config.messages.welcome) {
+  const customWelcome = String(config.messages?.welcome || "").trim();
+
+  if (customWelcome && !isServicesBotProfile(config)) {
     return interpolate(config.messages.welcome, config);
   }
 
   if (isServicesBotProfile(config)) {
-    return joinBlocks([
-      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
-      "Posso te ajudar a entender os servicos e organizar seu atendimento inicial.",
-      buildMenuMessage(config)
-    ]);
+    return `Oi! Tudo bem? Me conta rapidinho como posso te ajudar hoje.`;
   }
 
   if (isKiagendaBot(config)) {
     return joinBlocks([
-      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
-      "Posso te passar informacoes basicas e te direcionar para o agendamento.",
-      buildSchedulingCta(config, "E so acessar e escolher o melhor horario pra voce")
+      "Oi! Tudo bem?",
+      "Posso te ajudar com informacoes ou te direcionar para o agendamento."
     ]);
   }
 
   if (isLojaOnlineBot(config)) {
     return joinBlocks([
-      `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
-      "Posso te mostrar os produtos e te direcionar para o link de compra.",
-      buildMenuMessage(config)
+      "Oi! Tudo bem?",
+      "Me conta o que voce procura que eu te ajudo por aqui."
     ]);
   }
 
-  return joinBlocks([
-    `Ola! Voce esta falando com ${config.business.name || "nossa equipe"}.`,
-    "Escolha uma opcao do menu:",
-    buildMenuMessage(config)
-  ]);
+  return "Oi! Tudo bem? Me conta como posso te ajudar hoje.";
 }
 
 function buildMenuMessage(config) {
@@ -188,7 +176,26 @@ function buildMenuMessage(config) {
     return "No momento nao ha opcoes ativas no menu.";
   }
 
-  return enabledItems.join("\n");
+  return `Posso te ajudar com estas opcoes:\n${enabledItems.join("\n")}`;
+}
+
+function buildMainServiceQuestion(config) {
+  const categories = getActiveCatalogCategoriesWithItems(config);
+  const servicesCategory = categories.find((category) => String(category.legacyKey || "").toLowerCase() === "services") || categories[0];
+  const serviceNames = (servicesCategory?.items || [])
+    .map((item) => item?.name)
+    .filter(Boolean)
+    .slice(0, 3);
+
+  if (serviceNames.length >= 2) {
+    return `Posso te ajudar com ${serviceNames.join(", ")}. Qual desses faz mais sentido pra voce?`;
+  }
+
+  if (serviceNames.length === 1) {
+    return `Posso te ajudar com ${serviceNames[0]}. O que voce gostaria de saber?`;
+  }
+
+  return "Me conta o que voce precisa que eu te direciono pelo melhor caminho.";
 }
 
 function buildBusinessMessage(config) {
@@ -270,7 +277,7 @@ function buildCatalogListMessage(config, key, title, singularLabel) {
     .filter(Boolean)
     .map((name) => `- ${name}`);
 
-  return `Claro.\n\nEstas sao as opcoes de ${target.title.toLowerCase()}:\n\n${names.join("\n")}\n\nDigite o nome do ${target.singularLabel.toLowerCase()} que voce quer conhecer melhor.`;
+  return `Claro. Hoje tenho estas opcoes de ${target.title.toLowerCase()}:\n\n${names.join("\n")}\n\nQual delas faz mais sentido pra voce?`;
 }
 
 function buildCatalogItemMessage(configOrItem, maybeItem) {
@@ -382,7 +389,7 @@ function buildLinkChoiceHelpMessage(config) {
 }
 
 function buildHandoffMessage(config) {
-  if (config.messages.handoff) {
+  if (config.messages.handoff && !isServicesBotProfile(config)) {
     return interpolate(config.messages.handoff, config);
   }
 
@@ -398,23 +405,23 @@ function buildHandoffMessage(config) {
       return workflow?.nextStepDetails || `${getAttendantLabel(config)} vai continuar com voce e te passar o proximo link de atendimento.`;
     }
 
-    return `${getAttendantLabel(config)} vai continuar com voce e pode te orientar no proximo passo do atendimento.`;
+    return "Claro, vou encaminhar para o atendimento. Assim que possivel alguem te responde por aqui.";
   }
 
   if (isKiagendaBot(config)) {
     return buildSchedulingCta(config, "Voce pode seguir pelo sistema de agendamento por aqui");
   }
 
-  return `${getAttendantLabel(config)} vai continuar por aqui em instantes.`;
+  return "Claro, vou encaminhar para o atendimento. Assim que possivel alguem te responde por aqui.";
 }
 
 function buildFallbackMessage(config) {
-  if (config.messages.fallback) {
+  if (config.messages.fallback && !isServicesBotProfile(config)) {
     return interpolate(config.messages.fallback, config);
   }
 
   if (isServicesBotProfile(config)) {
-    return `Nao entendi totalmente sua mensagem ainda.\n\nPosso te mostrar os servicos, explicar um servico especifico ou te encaminhar para atendimento.`;
+    return buildMainServiceQuestion(config);
   }
 
   if (isKiagendaBot(config)) {
@@ -425,7 +432,7 @@ function buildFallbackMessage(config) {
     return "Posso te mostrar o produto, informar o preco se estiver cadastrado e te passar o link de compra.";
   }
 
-  return `Nao entendi sua mensagem. Responda com uma opcao do menu:\n${buildMenuMessage(config)}`;
+  return "Entendi mais ou menos. Voce quer ajuda com servicos, produtos, links ou atendimento?";
 }
 
 function buildDeliveryPickupMessage(config) {
@@ -463,6 +470,7 @@ module.exports = {
   buildLinkMatchesMessage,
   buildMenuHints,
   buildMenuMessage,
+  buildMainServiceQuestion,
   buildPersonalizedMenuMessage,
   buildProfileCollectionPrompt,
   buildProfileCollectionRetryMessage,

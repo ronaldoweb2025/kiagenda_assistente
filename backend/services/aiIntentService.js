@@ -1,4 +1,29 @@
-const ALLOWED_INTENTS = ["produtos", "servicos", "parcerias", "links", "atendimento", "preco", "entrega", "fora_do_escopo"];
+const ALLOWED_INTENTS = [
+  "saudacao",
+  "pedir_servicos",
+  "site_landing_page",
+  "trafego_pago",
+  "google_meu_negocio",
+  "seo_local",
+  "preco_orcamento",
+  "portfolio",
+  "prazo_entrega",
+  "suporte_cliente",
+  "parceria_revenda",
+  "links_importantes",
+  "falar_com_humano",
+  "agradecimento",
+  "despedida",
+  "mensagem_confusa",
+  "produtos",
+  "servicos",
+  "parcerias",
+  "links",
+  "atendimento",
+  "preco",
+  "entrega",
+  "fora_do_escopo"
+];
 const DEFAULT_CONFIDENCE = 0;
 const MIN_CONFIDENCE = 0.7;
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
@@ -106,7 +131,7 @@ async function detectIntentWithAI(message, tenantConfig = {}, runtimeContext = {
               "Responda apenas com JSON no schema fornecido. " +
               "Nunca invente dados do negocio. " +
               `${String(modelConfig.promptBase || "").trim() ? `Considere estas regras do modelo:\n${String(modelConfig.promptBase).trim()}\n` : ""}` +
-              "Escolha apenas uma intencao entre: produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
+              "Escolha apenas uma intencao entre: saudacao, pedir_servicos, site_landing_page, trafego_pago, google_meu_negocio, seo_local, preco_orcamento, portfolio, prazo_entrega, suporte_cliente, parceria_revenda, links_importantes, falar_com_humano, agradecimento, despedida, mensagem_confusa, produtos, servicos, parcerias, links, atendimento, preco, entrega, fora_do_escopo. " +
               "Use fora_do_escopo quando houver ambiguidade, baixa certeza ou assunto fora dessas categorias."
           },
           {

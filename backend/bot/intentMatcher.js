@@ -70,21 +70,23 @@ function getCatalogCandidates(item) {
 
 function scoreCandidateMatch(text, candidateEntry) {
   const candidate = candidateEntry?.value || "";
+  const textVariant = normalizeKeywordVariant(text);
+  const candidateVariant = normalizeKeywordVariant(candidate);
   const priority = Number(candidateEntry?.priority || 0);
 
   if (!text || !candidate) {
     return 0;
   }
 
-  if (text === candidate) {
+  if (text === candidate || textVariant === candidateVariant) {
     return 50 + priority;
   }
 
-  if (text.includes(candidate)) {
+  if (text.includes(candidate) || text.includes(candidateVariant) || textVariant.includes(candidate) || textVariant.includes(candidateVariant)) {
     return (candidate.split(/\s+/).length > 1 ? 40 : 30) + priority;
   }
 
-  if (candidate.includes(text)) {
+  if (candidate.includes(text) || candidateVariant.includes(textVariant)) {
     return 20 + priority;
   }
 
@@ -258,11 +260,11 @@ function matchIntent(message, config) {
     return { intent: "saudacao" };
   }
 
-  if (includesAny(text, ["menu", "opcoes", "inicio", "comecar"])) {
+  if (includesAny(text, ["menu", "opcoes", "opcao", "inicio", "comecar", "quais opcoes"])) {
     return { intent: "menu" };
   }
 
-  if (includesAny(text, ["link", "links"])) {
+  if (includesAny(text, ["link", "links", "catalogo", "agenda", "agendamento"])) {
     return { intent: "menu", menuAction: "links" };
   }
 
@@ -270,14 +272,47 @@ function matchIntent(message, config) {
     return { intent: "entrega_retirada" };
   }
 
-  if (includesAny(text, ["humano", "atendente", "atendimento", "pessoa", "suporte"])) {
+  if (includesAny(text, ["humano", "atendente", "atendimento", "pessoa", "suporte", "falar com", "ronaldo"])) {
     return { intent: "atendimento_humano" };
   }
 
-  const categoryMatch = findCatalogCategoryMatch(text, config);
+  const serviceCategory = findCatalogCategoryMatch("servicos", config);
+  const categoryItemMatch = findCatalogItemMatch(text, config);
 
-  if (categoryMatch) {
-    return { intent: "ver_categoria", categoryId: categoryMatch.id };
+  if (categoryItemMatch) {
+    return categoryItemMatch;
+  }
+
+  if (serviceCategory && includesAny(text, ["servico", "servicos", "o que voce faz", "quais servicos", "opcoes de servico"])) {
+    return { intent: "ver_categoria", categoryId: serviceCategory.id };
+  }
+
+  if (serviceCategory && includesAny(text, [
+    "site",
+    "sites",
+    "landing page",
+    "pagina de vendas",
+    "trafego",
+    "anuncio",
+    "anuncios",
+    "facebook ads",
+    "google ads",
+    "google meu negocio",
+    "google maps",
+    "aparecer no google",
+    "seo",
+    "orcamento",
+    "preco",
+    "valor",
+    "quanto custa"
+  ])) {
+    const itemMatch = findCatalogItemMatch(text, config);
+
+    if (itemMatch) {
+      return itemMatch;
+    }
+
+    return { intent: "ver_categoria", categoryId: serviceCategory.id };
   }
 
   const linkMatch = findLinkMatch(text, config);
@@ -298,10 +333,10 @@ function matchIntent(message, config) {
     return resolveAdvancedOptionIntent(advancedOptionMatch);
   }
 
-  const categoryItemMatch = findCatalogItemMatch(text, config);
+  const categoryMatch = findCatalogCategoryMatch(text, config);
 
-  if (categoryItemMatch) {
-    return categoryItemMatch;
+  if (categoryMatch) {
+    return { intent: "ver_categoria", categoryId: categoryMatch.id };
   }
 
   return { intent: "fora_do_escopo" };
