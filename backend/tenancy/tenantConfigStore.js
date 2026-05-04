@@ -21,9 +21,117 @@ const { ensureDirectory, readJsonFile, writeJsonFile } = require("../utils/jsonF
 const dataDirectoryPath = path.resolve(__dirname, "../../data");
 const tenantsDirectoryPath = path.resolve(dataDirectoryPath, "tenants");
 const backupsDirectoryPath = path.resolve(dataDirectoryPath, "backups");
+const tenantConfigBackupsDirectoryPath = path.resolve(dataDirectoryPath, "tenantConfig.backup");
 const legacyConfigFilePath = path.resolve(dataDirectoryPath, "config.json");
 const PLAN_DOWNGRADE_WARNING =
   "Voce possui recursos acima do limite do plano atual. Eles foram preservados, mas alguns ficarao bloqueados ate fazer upgrade.";
+const PROTECTED_EMPTY_KEYS = new Set(["", null, undefined]);
+
+function isTenantConfigDebugEnabled() {
+  return String(process.env.TENANT_CONFIG_DEBUG || "").trim().toLowerCase() === "true";
+}
+
+function redactSensitiveConfig(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveConfig(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entryValue]) => {
+      if (/apiKey|token|secret|password/i.test(key)) {
+        const rawValue = normalizeString(entryValue);
+        return [key, rawValue ? `${rawValue.slice(0, 6)}***${rawValue.slice(-4)}` : ""];
+      }
+
+      if (key === "dataUrl" && typeof entryValue === "string") {
+        return [key, entryValue ? `${entryValue.slice(0, 40)}...<redacted>` : ""];
+      }
+
+      return [key, redactSensitiveConfig(entryValue)];
+    })
+  );
+}
+
+function logTenantConfig(label, config) {
+  if (!isTenantConfigDebugEnabled()) {
+    return;
+  }
+
+  console.log(`${label}:`, JSON.stringify(redactSensitiveConfig(config), null, 2));
+}
+
+function isMeaningfulMergeValue(value) {
+  if (PROTECTED_EMPTY_KEYS.has(value)) {
+    return false;
+  }
+
+  if (typeof value === "string" && value.trim() === "") {
+    return false;
+  }
+
+  return true;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function safeMerge(oldConfig, newConfig) {
+  if (!isPlainObject(newConfig)) {
+    return isMeaningfulMergeValue(newConfig) ? newConfig : oldConfig;
+  }
+
+  const merged = {
+    ...(isPlainObject(oldConfig) ? oldConfig : {})
+  };
+
+  Object.entries(newConfig).forEach(([key, nextValue]) => {
+    const previousValue = merged[key];
+
+    if (!isMeaningfulMergeValue(nextValue)) {
+      return;
+    }
+
+    if (isPlainObject(previousValue) && isPlainObject(nextValue)) {
+      merged[key] = safeMerge(previousValue, nextValue);
+      return;
+    }
+
+    merged[key] = nextValue;
+  });
+
+  return merged;
+}
+
+function countMeaningfulValues(value) {
+  if (!isMeaningfulMergeValue(value)) {
+    return 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countMeaningfulValues(item), 0);
+  }
+
+  if (isPlainObject(value)) {
+    return Object.values(value).reduce((total, item) => total + countMeaningfulValues(item), 0);
+  }
+
+  return 1;
+}
+
+function assertNotAlmostEmptyConfig(config, label = "config") {
+  const meaningfulValues = countMeaningfulValues(config);
+
+  if (meaningfulValues < 3) {
+    const error = new Error(`${label}_quase_vazia_bloqueada`);
+    error.statusCode = 400;
+    throw error;
+  }
+}
 
 function normalizeBoolean(value) {
   return Boolean(value);
@@ -105,7 +213,7 @@ function normalizeBotProfile(input = {}) {
         normalizeString(adjustablePrompt?.focoAtendimento) ||
         defaultTenantConfig.botProfile.adjustablePrompt.focoAtendimento,
       instrucoesNegocio: normalizeString(adjustablePrompt?.instrucoesNegocio),
-      regrasPersonalizadas: normalizeString(adjustablePrompt?.regrasPersonalizadas)
+      regrasPersonalizadas: normalizeString(adjustablePrompt?.regrasPersonalizadas || input?.rules || input?.regras)
     },
     serviceWorkflow: {
       attendanceType:
@@ -373,7 +481,7 @@ function normalizeTenant(input = {}) {
       handoff: normalizeString(input?.messages?.handoff),
       audio: normalizeMediaAsset(input?.messages?.audio)
     },
-    botProfile: normalizeBotProfile(input?.botProfile),
+    botProfile: normalizeBotProfile(safeMerge(safeMerge(input?.behavior || {}, input?.botBehavior || {}), input?.botProfile || {})),
     settings: {
       stateTTL: normalizeNumber(input?.settings?.stateTTL, defaultTenantConfig.settings.stateTTL),
       handoffTimeout: normalizeNumber(
@@ -673,6 +781,7 @@ function getTenantFilePath(tenantId) {
 function ensureDataDirectories() {
   ensureDirectory(tenantsDirectoryPath);
   ensureDirectory(backupsDirectoryPath);
+  ensureDirectory(tenantConfigBackupsDirectoryPath);
 }
 
 function tenantExists(tenantId) {
@@ -694,24 +803,31 @@ function readTenant(tenantId) {
   if (!parsed) {
     const fallback = buildDefaultTenant(resolvedTenantId);
     writeJsonFile(filePath, fallback);
+    logTenantConfig("CONFIG CARREGADA", fallback);
     return fallback;
   }
 
-  return normalizeTenant({
+  const normalizedTenant = normalizeTenant({
     ...parsed,
     tenantId: resolvedTenantId,
     meta: mergeMeta(parsed.meta || {}, {})
   });
+
+  logTenantConfig("CONFIG CARREGADA", normalizedTenant);
+  return normalizedTenant;
 }
 
 function writeTenant(tenantId, tenantData, options = {}) {
   const resolvedTenantId = assertTenantId(tenantId);
   const filePath = getTenantFilePath(resolvedTenantId);
+  assertNotAlmostEmptyConfig(tenantData, "tenant_config");
   const normalizedTenant = normalizeTenant({
     ...tenantData,
     tenantId: resolvedTenantId,
     meta: mergeMeta(tenantData.meta || {}, {})
   });
+
+  logTenantConfig("CONFIG ANTES DE SALVAR", normalizedTenant);
 
   if (!options.skipPlanValidation) {
     validateTenantPlanConstraints(normalizedTenant);
@@ -734,14 +850,18 @@ function deleteTenantFile(tenantId) {
 
 function updateTenant(tenantId, partialTenant) {
   const currentTenant = readTenant(tenantId);
-  const mergedTenant = mergeTenant(currentTenant, partialTenant || {});
+  logTenantConfig("PAYLOAD FRONT", partialTenant || {});
+  const protectedPartialTenant = safeMerge(currentTenant, partialTenant || {});
+  const mergedTenant = mergeTenant(currentTenant, protectedPartialTenant || {});
   const currentViolations = collectTenantPlanConstraintViolations(currentTenant);
   const nextViolations = collectTenantPlanConstraintViolations(mergedTenant);
   const backup = createTenantBackup(tenantId);
+  const configBackup = createTenantConfigBackup(tenantId, currentTenant);
 
   if (!currentViolations.length) {
     const tenant = writeTenant(tenantId, mergedTenant);
     tenant.backup = backup;
+    tenant.configBackup = configBackup;
     return tenant;
   }
 
@@ -767,6 +887,7 @@ function updateTenant(tenantId, partialTenant) {
     skipPlanValidation: true
   });
   tenant.backup = backup;
+  tenant.configBackup = configBackup;
   return tenant;
 }
 
@@ -783,6 +904,22 @@ function createTenantBackup(tenantId) {
   const backupFilePath = path.resolve(backupsDirectoryPath, backupFileName);
 
   writeJsonFile(backupFilePath, currentTenant);
+
+  return {
+    fileName: backupFileName,
+    filePath: backupFilePath
+  };
+}
+
+function createTenantConfigBackup(tenantId, currentTenant = null) {
+  const resolvedTenantId = assertTenantId(tenantId);
+  ensureDataDirectories();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupFileName = `${resolvedTenantId}.tenantConfig.backup.${timestamp}.json`;
+  const backupFilePath = path.resolve(tenantConfigBackupsDirectoryPath, backupFileName);
+  const tenantSnapshot = currentTenant || readTenant(resolvedTenantId);
+
+  writeJsonFile(backupFilePath, tenantSnapshot);
 
   return {
     fileName: backupFileName,
@@ -910,6 +1047,7 @@ module.exports = {
   bootstrapTenantConfigStore,
   buildDefaultTenant,
   createTenantBackup,
+  createTenantConfigBackup,
   getTenantFilePath,
   listTenants,
   listTenantBackups,
@@ -921,5 +1059,6 @@ module.exports = {
   updateTenant,
   writeTenant,
   backupsDirectoryPath,
+  tenantConfigBackupsDirectoryPath,
   tenantsDirectoryPath
 };

@@ -12,6 +12,7 @@ function updateTenantConfig(req, res) {
       : "Configuracao do tenant atualizada com sucesso.",
     warning: tenant.warning || "",
     backup: tenant.backup || null,
+    configBackup: tenant.configBackup || null,
     data: tenant
   });
 }

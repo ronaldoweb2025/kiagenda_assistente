@@ -71,6 +71,7 @@ function putTenant(req, res) {
       : "Cliente atualizado com sucesso.",
     warning: tenant.warning || "",
     backup: tenant.backup || null,
+    configBackup: tenant.configBackup || null,
     data: tenant
   });
 }
