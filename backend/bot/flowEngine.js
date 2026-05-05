@@ -31,6 +31,7 @@ const { matchIntent } = require("./intentMatcher");
 const { matchFAQ } = require("./faqMatcher");
 const { detectIntentWithAI } = require("../services/aiIntentService");
 const { detectIntentWithGemini } = require("../services/geminiIntentService");
+const { generateFAQKnowledgeReply, interpolateTenantText } = require("../services/faqResponseService");
 const { canUseFeature, normalizePlan, normalizeSubscriptionStatus } = require("../services/featureAccessService");
 const { getState, setState } = require("./stateManager");
 const { updateTenant } = require("../tenancy/tenantConfigStore");
@@ -598,17 +599,6 @@ function buildReplyStatePatch(state, message, reply, extra = {}) {
     lastBotMessage: String(reply || ""),
     recentMessages: appendRecentMessages(state, message, reply)
   };
-}
-
-function interpolateTenantText(text, config = {}) {
-  const businessName = config?.business?.name || "empresa";
-  const attendantName = config?.business?.attendantName || "Atendimento";
-
-  return String(text || "")
-    .replace(/\{\{\s*business\.name\s*\}\}/gi, businessName)
-    .replace(/\{\{\s*businessName\s*\}\}/gi, businessName)
-    .replace(/\{\{\s*attendantName\s*\}\}/gi, attendantName)
-    .replace(/\{\{\s*business\.attendantName\s*\}\}/gi, attendantName);
 }
 
 function getBotControlCommand(message) {
@@ -1273,7 +1263,9 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
 
   if (faqMatch) {
     console.log("FAQ MATCH:", faqMatch.pergunta);
-    const reply = interpolateTenantText(faqMatch.resposta, config);
+    const reply = faqMatch.mode === "knowledge"
+      ? await generateFAQKnowledgeReply({ message, faqMatch, tenantConfig: config, state })
+      : interpolateTenantText(faqMatch.resposta, config);
     const faqState = setState(
       tenantId,
       contactId,

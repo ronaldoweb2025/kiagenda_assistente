@@ -6,6 +6,7 @@ const {
   readTenant,
   restoreTenantBackup,
   tenantExists,
+  createTenantConfigBackup,
   updateTenantPlan: persistTenantPlanUpdate,
   updateTenant,
   writeTenant
@@ -64,6 +65,46 @@ function saveTenant(tenantId, payload = {}) {
   return updateTenant(tenantId, payload);
 }
 
+function exportTenantConfig(tenantId) {
+  const tenant = readTenant(tenantId);
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    tenantId: tenant.tenantId,
+    config: tenant
+  };
+}
+
+function importTenantConfig(tenantId, payload = {}) {
+  const currentTenant = readTenant(tenantId);
+  const incomingConfig = payload.config || payload.tenant || payload;
+  const incomingTenantId = String(incomingConfig?.tenantId || "").trim();
+
+  if (!incomingConfig || typeof incomingConfig !== "object" || Array.isArray(incomingConfig)) {
+    const error = new Error("Arquivo de configuracao invalido.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (incomingTenantId && incomingTenantId !== currentTenant.tenantId) {
+    const error = new Error("Este backup pertence a outro tenant.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const backup = createTenantConfigBackup(tenantId, currentTenant);
+  const restoredTenant = writeTenant(tenantId, {
+    ...incomingConfig,
+    tenantId: currentTenant.tenantId
+  });
+
+  return {
+    tenant: restoredTenant,
+    backup
+  };
+}
+
 function changeTenantPlan(tenantId, newPlan, status) {
   return persistTenantPlanUpdate(tenantId, newPlan, status);
 }
@@ -117,7 +158,9 @@ module.exports = {
   createTenant,
   deleteTenantPermanently,
   disableTenant,
+  exportTenantConfig,
   getTenant,
+  importTenantConfig,
   listTenantSummaries,
   restoreLatestTenantBackup,
   saveTenant

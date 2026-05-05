@@ -88,6 +88,7 @@ function matchFAQ(message, faqList = [], threshold = 0.7) {
         bestMatch = {
           pergunta: question,
           resposta: item.resposta,
+          mode: String(item.mode || item.modo || "knowledge").trim().toLowerCase() === "fixed" ? "fixed" : "knowledge",
           score,
           item
         };

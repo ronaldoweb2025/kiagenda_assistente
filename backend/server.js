@@ -40,7 +40,7 @@ app.use(
     }
   })
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.static(frontendPath));

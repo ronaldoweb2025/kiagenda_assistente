@@ -644,6 +644,13 @@
           <p class="muted-copy">Quando uma mensagem bater com uma pergunta cadastrada aqui, o bot responde isso antes de usar IA, menu ou outras regras.</p>
 
           <div class="field-grid">
+            <label>
+              Como o bot deve usar este FAQ
+              <select id="faqMode">
+                <option value="knowledge">Usar como base para a IA responder natural</option>
+                <option value="fixed">Responder exatamente o texto cadastrado</option>
+              </select>
+            </label>
             <label class="full-width">
               Perguntas que ativam a resposta
               <textarea id="faqQuestions" placeholder="Uma pergunta por linha. Ex.:&#10;vc e o Ronaldo?&#10;e humano?&#10;estou falando com quem?"></textarea>
@@ -731,6 +738,27 @@
                   Sobre o negocio
                   <textarea id="businessDescription" placeholder="Ex.: horario de atendimento, cidade, especialidades e outras informacoes importantes."></textarea>
                 </label>
+              </div>
+            </div>
+
+            <div class="section-subcard">
+              <div class="section-subcard-header">
+                <div>
+                  <h4>Backup das configuracoes</h4>
+                  <p class="muted-copy">Baixe uma copia do tenant ou restaure um arquivo salvo anteriormente.</p>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label class="full-width">
+                  Arquivo de backup
+                  <input id="configBackupFile" type="file" accept="application/json,.json">
+                </label>
+              </div>
+
+              <div class="button-row">
+                <button id="downloadConfigButton" class="neutral-button" type="button">Baixar configuracao</button>
+                <button id="uploadConfigButton" class="primary-button" type="button">Restaurar configuracao</button>
               </div>
             </div>
 

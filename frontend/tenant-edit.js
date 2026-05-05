@@ -203,6 +203,7 @@ const dashboardElements = {
   addLinkButton: document.getElementById("addLinkButton"),
   cancelLinkEditButton: document.getElementById("cancelLinkEditButton"),
   linksList: document.getElementById("linksList"),
+  faqMode: document.getElementById("faqMode"),
   faqQuestions: document.getElementById("faqQuestions"),
   faqAnswer: document.getElementById("faqAnswer"),
   addFaqButton: document.getElementById("addFaqButton"),
@@ -224,6 +225,9 @@ const dashboardElements = {
   simulatorIntent: document.getElementById("simulatorIntent"),
   simulatorReply: document.getElementById("simulatorReply"),
   tenantId: document.getElementById("tenantId"),
+  configBackupFile: document.getElementById("configBackupFile"),
+  downloadConfigButton: document.getElementById("downloadConfigButton"),
+  uploadConfigButton: document.getElementById("uploadConfigButton"),
   tenantActive: document.getElementById("tenantActive"),
   businessName: document.getElementById("businessName"),
   attendantName: document.getElementById("attendantName"),
@@ -1747,6 +1751,7 @@ function resetLinkForm() {
 
 function resetFaqForm() {
   dashboardState.editingFaqId = "";
+  dashboardElements.faqMode.value = "knowledge";
   dashboardElements.faqQuestions.value = "";
   dashboardElements.faqAnswer.value = "";
   dashboardElements.addFaqButton.textContent = "Adicionar FAQ";
@@ -2212,6 +2217,7 @@ function renderFaqList() {
     listItem.innerHTML = `
       <div>
         <h4>${KiagendaApp.escapeHtml(questions[0] || "Pergunta sem titulo")}</h4>
+        <p><strong>Uso:</strong> ${item.mode === "fixed" ? "resposta exata" : "base para IA"}</p>
         <p><strong>Variacoes:</strong> ${KiagendaApp.escapeHtml(questions.join(", ") || "-")}</p>
         <p>${KiagendaApp.escapeHtml(item.resposta || "")}</p>
       </div>
@@ -3131,6 +3137,7 @@ function startFaqEdit(faqId) {
   }
 
   dashboardState.editingFaqId = faqId;
+  dashboardElements.faqMode.value = faqItem.mode === "fixed" ? "fixed" : "knowledge";
   dashboardElements.faqQuestions.value = getFaqQuestions(faqItem).join("\n");
   dashboardElements.faqAnswer.value = faqItem.resposta || "";
   dashboardElements.addFaqButton.textContent = "Salvar alteracoes";
@@ -3188,7 +3195,8 @@ function upsertFaq() {
     id: dashboardState.editingFaqId || `faq_${Date.now()}`,
     pergunta: perguntas[0],
     perguntas,
-    resposta
+    resposta,
+    mode: dashboardElements.faqMode.value === "fixed" ? "fixed" : "knowledge"
   };
   const faqItems = dashboardState.tenant.faq || [];
   const existingIndex = faqItems.findIndex((item) => item.id === nextFaq.id);
@@ -3652,6 +3660,73 @@ async function saveTenant() {
   setFeedback(response.message || "Alteracoes salvas com sucesso.");
 }
 
+async function downloadTenantConfig() {
+  const response = await fetch(`/api/tenants/${encodeURIComponent(dashboardState.tenantId)}/config/export`);
+
+  if (!response.ok) {
+    throw new Error("Nao foi possivel baixar a configuracao.");
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const fileName = `${dashboardState.tenantId}.kiagenda-config.json`;
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+  setFeedback("Configuracao baixada com sucesso.");
+}
+
+function readConfigBackupFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        resolve(JSON.parse(String(reader.result || "{}")));
+      } catch (error) {
+        reject(new Error("Arquivo JSON invalido."));
+      }
+    };
+
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo."));
+    reader.readAsText(file);
+  });
+}
+
+async function uploadTenantConfig() {
+  const file = dashboardElements.configBackupFile?.files?.[0] || null;
+
+  if (!file) {
+    throw new Error("Selecione um arquivo JSON de configuracao.");
+  }
+
+  const payload = await readConfigBackupFile(file);
+  const response = await KiagendaApp.requestJson(`/api/tenants/${dashboardState.tenantId}/config/import`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  dashboardState.tenant = response.data;
+  dashboardState.tenant.botModel = normalizePanelBotModel(response.data.botModel);
+  dashboardState.tenant.advancedOptions = Array.isArray(response.data.advancedOptions) ? response.data.advancedOptions : [];
+  dashboardState.tenant.faq = Array.isArray(response.data.faq) ? response.data.faq : [];
+  dashboardState.tenant.categories = Array.isArray(response.data.categories) ? response.data.categories : [];
+  dashboardState.tenant.partnerships = Array.isArray(response.data.partnerships) ? response.data.partnerships : [];
+  dashboardState.tenant.botProfile = response.data.botProfile || null;
+  dashboardElements.configBackupFile.value = "";
+  ensureTenantCategories();
+  syncLegacyCatalogCollectionsFromCategories();
+  renderAll();
+  setFeedback(response.message || "Configuracao restaurada com sucesso.");
+}
+
 async function toggleBotEnabled() {
   dashboardState.tenant.botEnabled = !getBotEnabled();
   dashboardState.tenant.active = dashboardState.tenant.botEnabled;
@@ -3909,6 +3984,8 @@ dashboardElements.messageAudio?.addEventListener("change", () => {
 });
 dashboardElements.connectGoogleButton?.addEventListener("click", () => runAction(connectGoogleAccount));
 dashboardElements.updatePasswordButton.addEventListener("click", () => runAction(updatePassword));
+dashboardElements.downloadConfigButton.addEventListener("click", () => runAction(downloadTenantConfig));
+dashboardElements.uploadConfigButton.addEventListener("click", () => runAction(uploadTenantConfig));
 dashboardElements.botToggleButton.addEventListener("click", () => runAction(toggleBotEnabled));
 dashboardElements.upgradeButtons.forEach((button) => {
   button.addEventListener("click", openPlanUpgrade);

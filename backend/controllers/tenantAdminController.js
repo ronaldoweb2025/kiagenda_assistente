@@ -3,7 +3,9 @@ const {
   createTenant,
   deleteTenantPermanently,
   disableTenant,
+  exportTenantConfig,
   getTenant,
+  importTenantConfig,
   listTenantSummaries,
   restoreLatestTenantBackup,
   saveTenant
@@ -32,6 +34,15 @@ function postTenant(req, res) {
 
 function getTenantById(req, res) {
   res.json(getTenant(req.params.tenantId));
+}
+
+function getTenantConfigExport(req, res) {
+  const exportPayload = exportTenantConfig(req.params.tenantId);
+  const fileName = `${req.params.tenantId}.kiagenda-config.${new Date().toISOString().slice(0, 10)}.json`;
+
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  res.send(JSON.stringify(exportPayload, null, 2));
 }
 
 function getAdminPlanSettings(req, res) {
@@ -73,6 +84,16 @@ function putTenant(req, res) {
     backup: tenant.backup || null,
     configBackup: tenant.configBackup || null,
     data: tenant
+  });
+}
+
+function postTenantConfigImport(req, res) {
+  const result = importTenantConfig(req.params.tenantId, req.body || {});
+
+  res.json({
+    message: "Configuracao importada com sucesso. Um backup da configuracao anterior foi salvo.",
+    backup: result.backup,
+    data: result.tenant
   });
 }
 
@@ -128,8 +149,10 @@ module.exports = {
   deleteTenant,
   getAdminBotModelSettings,
   getAdminPlanSettings,
+  getTenantConfigExport,
   getTenantById,
   getTenants,
+  postTenantConfigImport,
   postRestoreTenantBackup,
   postTenant,
   putAdminBotModelSettings,

@@ -377,7 +377,10 @@ function normalizeFaqItems(items) {
         id: normalizeString(item?.id) || `faq_${index + 1}`,
         pergunta: pergunta || perguntas[0] || "",
         perguntas,
-        resposta: normalizeString(item?.resposta || item?.answer)
+        resposta: normalizeString(item?.resposta || item?.answer),
+        mode: ["fixed", "knowledge"].includes(normalizeString(item?.mode || item?.modo).toLowerCase())
+          ? normalizeString(item?.mode || item?.modo).toLowerCase()
+          : "knowledge"
       };
     })
     .filter((item) => item.resposta && (item.pergunta || item.perguntas.length));
