@@ -204,6 +204,7 @@ const dashboardElements = {
   cancelLinkEditButton: document.getElementById("cancelLinkEditButton"),
   linksList: document.getElementById("linksList"),
   faqMode: document.getElementById("faqMode"),
+  faqCritical: document.getElementById("faqCritical"),
   faqQuestions: document.getElementById("faqQuestions"),
   faqAnswer: document.getElementById("faqAnswer"),
   addFaqButton: document.getElementById("addFaqButton"),
@@ -1752,6 +1753,7 @@ function resetLinkForm() {
 function resetFaqForm() {
   dashboardState.editingFaqId = "";
   dashboardElements.faqMode.value = "knowledge";
+  dashboardElements.faqCritical.value = "false";
   dashboardElements.faqQuestions.value = "";
   dashboardElements.faqAnswer.value = "";
   dashboardElements.addFaqButton.textContent = "Adicionar FAQ";
@@ -2218,6 +2220,7 @@ function renderFaqList() {
       <div>
         <h4>${KiagendaApp.escapeHtml(questions[0] || "Pergunta sem titulo")}</h4>
         <p><strong>Uso:</strong> ${item.mode === "fixed" ? "resposta exata" : "base para IA"}</p>
+        <p><strong>Critico:</strong> ${item.critical ? "sim" : "nao"}</p>
         <p><strong>Variacoes:</strong> ${KiagendaApp.escapeHtml(questions.join(", ") || "-")}</p>
         <p>${KiagendaApp.escapeHtml(item.resposta || "")}</p>
       </div>
@@ -3138,6 +3141,7 @@ function startFaqEdit(faqId) {
 
   dashboardState.editingFaqId = faqId;
   dashboardElements.faqMode.value = faqItem.mode === "fixed" ? "fixed" : "knowledge";
+  dashboardElements.faqCritical.value = faqItem.critical ? "true" : "false";
   dashboardElements.faqQuestions.value = getFaqQuestions(faqItem).join("\n");
   dashboardElements.faqAnswer.value = faqItem.resposta || "";
   dashboardElements.addFaqButton.textContent = "Salvar alteracoes";
@@ -3196,7 +3200,8 @@ function upsertFaq() {
     pergunta: perguntas[0],
     perguntas,
     resposta,
-    mode: dashboardElements.faqMode.value === "fixed" ? "fixed" : "knowledge"
+    mode: dashboardElements.faqMode.value === "fixed" ? "fixed" : "knowledge",
+    critical: dashboardElements.faqCritical.value === "true"
   };
   const faqItems = dashboardState.tenant.faq || [];
   const existingIndex = faqItems.findIndex((item) => item.id === nextFaq.id);

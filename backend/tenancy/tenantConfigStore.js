@@ -380,7 +380,8 @@ function normalizeFaqItems(items) {
         resposta: normalizeString(item?.resposta || item?.answer),
         mode: ["fixed", "knowledge"].includes(normalizeString(item?.mode || item?.modo).toLowerCase())
           ? normalizeString(item?.mode || item?.modo).toLowerCase()
-          : "knowledge"
+          : "knowledge",
+        critical: item?.critical !== undefined ? normalizeBoolean(item.critical) : false
       };
     })
     .filter((item) => item.resposta && (item.pergunta || item.perguntas.length));

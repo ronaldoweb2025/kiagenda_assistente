@@ -4,11 +4,11 @@ const scenarios = [
     messages: [
       {
         user: "Oi",
-        expected: "Oi! Tudo bem? Me conta rapidinho como posso te ajudar hoje."
+        expected: "Oi! Tudo bem? Me conta aqui. Como posso te ajudar hoje."
       },
       {
         user: "tudo sim",
-        expected: "Que bom. Voce quer ajuda com site, anuncios ou presenca no Google?"
+        expected: "Que bom. Você quer ajuda com site, anuncios ou presenca no Google?"
       }
     ]
   },

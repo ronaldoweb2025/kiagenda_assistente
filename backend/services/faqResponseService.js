@@ -27,13 +27,13 @@ function buildRecentMessagesText(state = {}) {
     .join("\n");
 }
 
-async function generateFAQKnowledgeReply({ message, faqMatch, tenantConfig, state }) {
+async function generateConversationalReply({ message, faqMatch, tenantConfig, state }) {
   const fallbackReply = interpolateTenantText(faqMatch?.resposta || "", tenantConfig);
   const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || process.env.GEMINI_API_KEY || "").trim();
   const model = String(tenantConfig?.integration?.gemini?.model || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
 
   if (!apiKey || !fallbackReply) {
-    return fallbackReply;
+    return "";
   }
 
   try {
@@ -84,19 +84,25 @@ async function generateFAQKnowledgeReply({ message, faqMatch, tenantConfig, stat
 
     if (!response.ok) {
       console.warn("FAQ knowledge: Gemini retornou erro", response.status);
-      return fallbackReply;
+      return "";
     }
 
     const payload = await response.json();
     const reply = extractGeminiText(payload);
-    return reply || fallbackReply;
+    return reply || "";
   } catch (error) {
     console.warn("FAQ knowledge: falha ao gerar resposta com IA", error?.message || error);
-    return fallbackReply;
+    return "";
   }
 }
 
+async function generateFAQKnowledgeReply({ message, faqMatch, tenantConfig, state }) {
+  const reply = await generateConversationalReply({ message, faqMatch, tenantConfig, state });
+  return reply || interpolateTenantText(faqMatch?.resposta || "", tenantConfig);
+}
+
 module.exports = {
+  generateConversationalReply,
   generateFAQKnowledgeReply,
   interpolateTenantText
 };

@@ -31,7 +31,7 @@ const { matchIntent } = require("./intentMatcher");
 const { matchFAQ } = require("./faqMatcher");
 const { detectIntentWithAI } = require("../services/aiIntentService");
 const { detectIntentWithGemini } = require("../services/geminiIntentService");
-const { generateFAQKnowledgeReply, interpolateTenantText } = require("../services/faqResponseService");
+const { generateConversationalReply, interpolateTenantText } = require("../services/faqResponseService");
 const { canUseFeature, normalizePlan, normalizeSubscriptionStatus } = require("../services/featureAccessService");
 const { getState, setState } = require("./stateManager");
 const { updateTenant } = require("../tenancy/tenantConfigStore");
@@ -148,6 +148,26 @@ function getConversationState(state) {
     lastIntent: state?.conversationState?.lastIntent || "",
     rejectedServices: Array.isArray(state?.conversationState?.rejectedServices) ? state.conversationState.rejectedServices : []
   };
+}
+
+function shouldUseFAQNow(state, faqMatch) {
+  const hasActiveFlow = Boolean(
+    state?.currentFlow ||
+      (state?.currentStage && state.currentStage !== "idle") ||
+      state?.conversationState?.lastIntent ||
+      state?.conversationState?.lastSuggestedService ||
+      state?.pendingQuestion
+  );
+
+  if (!hasActiveFlow) {
+    return true;
+  }
+
+  if (faqMatch?.mode === "fixed" && faqMatch?.item?.critical === true) {
+    return true;
+  }
+
+  return false;
 }
 
 function isServiceContextQuestion(message) {
@@ -1262,32 +1282,57 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
   const faqMatch = matchFAQ(message, config?.faq || []);
 
   if (faqMatch) {
-    console.log("FAQ MATCH:", faqMatch.pergunta);
-    const reply = faqMatch.mode === "knowledge"
-      ? await generateFAQKnowledgeReply({ message, faqMatch, tenantConfig: config, state })
-      : interpolateTenantText(faqMatch.resposta, config);
-    const faqState = setState(
-      tenantId,
-      contactId,
-      buildReplyStatePatch(state, message, reply, {
-        currentState: "menu",
-        currentStage: "faq",
-        fallbackCount: 0,
-        outOfScopeCount: 0,
-        handoffUntil: null,
-        humanRequested: false,
-        lastBotMessageType: "faq"
-      }),
-      config.settings.stateTTL
-    );
+    console.log("FAQ_MATCH_FOUND", {
+      pergunta: faqMatch.pergunta,
+      mode: faqMatch.mode,
+      critical: faqMatch.item?.critical === true,
+      score: faqMatch.score
+    });
 
-    return {
-      tenantId,
-      contactId,
-      intent: "faq",
-      reply,
-      state: faqState
-    };
+    if (!shouldUseFAQNow(state, faqMatch)) {
+      console.log("FAQ_SKIPPED_ACTIVE_FLOW", {
+        pergunta: faqMatch.pergunta,
+        mode: faqMatch.mode,
+        currentFlow: state.currentFlow || "",
+        currentStage: state.currentStage || "",
+        lastIntent: state.conversationState?.lastIntent || "",
+        lastSuggestedService: state.conversationState?.lastSuggestedService || "",
+        pendingQuestion: state.pendingQuestion || ""
+      });
+    } else {
+      const fallbackReply = interpolateTenantText(faqMatch.resposta, config);
+      const reply = faqMatch.mode === "knowledge"
+        ? (await generateConversationalReply({ message, faqMatch, tenantConfig: config, state })) || fallbackReply
+        : fallbackReply;
+
+      console.log(faqMatch.mode === "knowledge" ? "FAQ_USED_AS_KNOWLEDGE" : "FAQ_USED_FIXED", {
+        pergunta: faqMatch.pergunta,
+        critical: faqMatch.item?.critical === true
+      });
+
+      const faqState = setState(
+        tenantId,
+        contactId,
+        buildReplyStatePatch(state, message, reply, {
+          currentState: "menu",
+          currentStage: "faq",
+          fallbackCount: 0,
+          outOfScopeCount: 0,
+          handoffUntil: null,
+          humanRequested: false,
+          lastBotMessageType: faqMatch.mode === "knowledge" ? "faq_knowledge" : "faq_fixed"
+        }),
+        config.settings.stateTTL
+      );
+
+      return {
+        tenantId,
+        contactId,
+        intent: faqMatch.mode === "knowledge" ? "faq_knowledge" : "faq",
+        reply,
+        state: faqState
+      };
+    }
   }
 
   const extracted = extractBasicData(message);
@@ -1997,5 +2042,6 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
 }
 
 module.exports = {
-  processIncomingMessage
+  processIncomingMessage,
+  shouldUseFAQNow
 };
