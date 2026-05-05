@@ -1,6 +1,6 @@
 # Kiagenda Multi Bot
 
-Sistema de atendimento automatico via WhatsApp com suporte a multiplos clientes.
+Sistema de Atendimento Automatico via WhatsApp com Suporte a multiplos clientes.
 
 ## Recursos
 
