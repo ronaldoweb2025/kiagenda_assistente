@@ -24,6 +24,7 @@
         <button class="dashboard-nav-button hidden-view" type="button" data-target="campaigns" data-feature="ninja-send">Ninja Send</button>
         <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
         <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
+        <button class="dashboard-nav-button" type="button" data-target="flows">Fluxos de Conversa</button>
         <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
         <button class="dashboard-nav-button" type="button" data-target="settings">Configurações do Negócio</button>
       </nav>
@@ -63,6 +64,7 @@
           <button class="dashboard-nav-button hidden-view" type="button" data-target="campaigns" data-feature="ninja-send">Ninja Send</button>
           <button class="dashboard-nav-button" type="button" data-target="products">Catálogo e Categorias</button>
           <button class="dashboard-nav-button" type="button" data-target="links">Links</button>
+          <button class="dashboard-nav-button" type="button" data-target="flows">Fluxos de conversa</button>
           <button class="dashboard-nav-button" type="button" data-target="test">Testar atendimento</button>
           <button class="dashboard-nav-button" type="button" data-target="settings">Configuracoes do negocio</button>
         </div>
@@ -674,6 +676,55 @@
           </div>
 
           <ul id="faqList" class="item-list"></ul>
+        </article>
+      </section>
+
+      <section class="panel-section" data-section="flows">
+        <article class="card section-card">
+          <p class="eyebrow">Fluxos de conversa</p>
+          <h3>Roteiros sugestivos para a IA</h3>
+          <p class="muted-copy">Cadastre caminhos de conversa para interesses recorrentes, como sites, Google Meu Negocio, trafego pago, delivery, loja online ou parcerias.</p>
+
+          <div class="field-grid">
+            <label>
+              Nome do fluxo
+              <input id="flowName" type="text" placeholder="Ex.: Criacao de Sites">
+            </label>
+            <label>
+              Status
+              <select id="flowEnabled">
+                <option value="true">Ativo</option>
+                <option value="false">Inativo</option>
+              </select>
+            </label>
+            <label class="full-width">
+              Gatilhos/palavras-chave
+              <textarea id="flowTriggers" placeholder="Uma palavra ou frase por linha. Ex.:&#10;site&#10;criar site&#10;landing page&#10;preciso de um site"></textarea>
+            </label>
+            <label class="full-width">
+              Objetivo do fluxo
+              <textarea id="flowObjective" placeholder="Ex.: Entender se o cliente precisa de um site novo, qual e o ramo do negocio e qual objetivo principal."></textarea>
+            </label>
+            <label class="full-width">
+              Etapas sugeridas
+              <textarea id="flowSteps" placeholder="Ex.: 1. Perguntar se ja tem site ou se sera o primeiro. 2. Perguntar o ramo da empresa. 3. Perguntar o objetivo principal."></textarea>
+            </label>
+            <label class="full-width">
+              Regras do fluxo
+              <textarea id="flowRules" placeholder="Ex.: Nao repetir explicacao inicial. Fazer uma pergunta por vez. Nao prometer prazo, preco final ou resultado."></textarea>
+            </label>
+            <label class="full-width">
+              Condicao de encaminhamento
+              <textarea id="flowHandoffCondition" placeholder="Ex.: Encaminhar quando o cliente demonstrar interesse claro em orcamento, contratacao ou proxima etapa."></textarea>
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="addFlowButton" class="primary-button" type="button">Adicionar fluxo</button>
+            <button id="cancelFlowEditButton" class="neutral-button hidden-view" type="button">Cancelar edicao</button>
+          </div>
+
+          <ul id="conversationFlowsList" class="item-list"></ul>
         </article>
       </section>
 

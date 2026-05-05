@@ -18,6 +18,7 @@ const dashboardState = {
   catalogKeywordSuggestions: [],
   editingLinkId: "",
   editingFaqId: "",
+  editingFlowId: "",
   editingMenuId: "",
   editingMessageType: "",
   advancedMenuOpen: false,
@@ -210,6 +211,16 @@ const dashboardElements = {
   addFaqButton: document.getElementById("addFaqButton"),
   cancelFaqEditButton: document.getElementById("cancelFaqEditButton"),
   faqList: document.getElementById("faqList"),
+  flowName: document.getElementById("flowName"),
+  flowEnabled: document.getElementById("flowEnabled"),
+  flowTriggers: document.getElementById("flowTriggers"),
+  flowObjective: document.getElementById("flowObjective"),
+  flowSteps: document.getElementById("flowSteps"),
+  flowRules: document.getElementById("flowRules"),
+  flowHandoffCondition: document.getElementById("flowHandoffCondition"),
+  addFlowButton: document.getElementById("addFlowButton"),
+  cancelFlowEditButton: document.getElementById("cancelFlowEditButton"),
+  conversationFlowsList: document.getElementById("conversationFlowsList"),
   toggleAdvancedMenuButton: document.getElementById("toggleAdvancedMenuButton"),
   advancedMenuPanel: document.getElementById("advancedMenuPanel"),
   menuLabel: document.getElementById("menuLabel"),
@@ -1760,6 +1771,19 @@ function resetFaqForm() {
   dashboardElements.cancelFaqEditButton.classList.add("hidden-view");
 }
 
+function resetFlowForm() {
+  dashboardState.editingFlowId = "";
+  dashboardElements.flowName.value = "";
+  dashboardElements.flowEnabled.value = "true";
+  dashboardElements.flowTriggers.value = "";
+  dashboardElements.flowObjective.value = "";
+  dashboardElements.flowSteps.value = "";
+  dashboardElements.flowRules.value = "";
+  dashboardElements.flowHandoffCondition.value = "";
+  dashboardElements.addFlowButton.textContent = "Adicionar fluxo";
+  dashboardElements.cancelFlowEditButton.classList.add("hidden-view");
+}
+
 function resetPasswordForm() {
   dashboardElements.newPassword.value = "";
   dashboardElements.confirmNewPassword.value = "";
@@ -2232,6 +2256,45 @@ function renderFaqList() {
     ));
 
     dashboardElements.faqList.appendChild(listItem);
+  });
+}
+
+function parseFlowTriggers(value) {
+  return String(value || "")
+    .split(/\r?\n|;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function renderConversationFlows() {
+  dashboardElements.conversationFlowsList.innerHTML = "";
+  const flows = Array.isArray(dashboardState.tenant.conversationFlows) ? dashboardState.tenant.conversationFlows : [];
+
+  if (!flows.length) {
+    dashboardElements.conversationFlowsList.innerHTML = '<li class="item-card"><p>Nenhum fluxo de conversa cadastrado ainda.</p></li>';
+    return;
+  }
+
+  flows.forEach((flow) => {
+    const listItem = document.createElement("li");
+    listItem.className = "item-card";
+    listItem.innerHTML = `
+      <div>
+        <h4>${KiagendaApp.escapeHtml(flow.name || "Fluxo sem nome")}</h4>
+        <p><strong>Status:</strong> ${flow.enabled === false ? "inativo" : "ativo"}</p>
+        <p><strong>Gatilhos:</strong> ${KiagendaApp.escapeHtml((flow.triggers || []).join(", ") || "-")}</p>
+        <p><strong>Objetivo:</strong> ${KiagendaApp.escapeHtml(flow.objective || "-")}</p>
+        <p><strong>Etapas:</strong> ${KiagendaApp.escapeHtml(flow.steps || "-")}</p>
+        <p><strong>Regras:</strong> ${KiagendaApp.escapeHtml(flow.rules || "-")}</p>
+        <p><strong>Encaminhamento:</strong> ${KiagendaApp.escapeHtml(flow.handoffCondition || "-")}</p>
+      </div>
+    `;
+
+    listItem.appendChild(renderListActions(
+      () => startFlowEdit(flow.id),
+      () => removeFlow(flow.id)
+    ));
+    dashboardElements.conversationFlowsList.appendChild(listItem);
   });
 }
 
@@ -2844,6 +2907,7 @@ function renderAll() {
   renderCampaigns();
   renderCatalog();
   renderLinks();
+  renderConversationFlows();
   renderSettings();
 }
 
@@ -3158,6 +3222,35 @@ function removeFaq(faqId) {
   renderAll();
 }
 
+function startFlowEdit(flowId) {
+  const flow = (dashboardState.tenant.conversationFlows || []).find((item) => item.id === flowId);
+
+  if (!flow) {
+    return;
+  }
+
+  dashboardState.editingFlowId = flowId;
+  dashboardElements.flowName.value = flow.name || "";
+  dashboardElements.flowEnabled.value = flow.enabled === false ? "false" : "true";
+  dashboardElements.flowTriggers.value = (flow.triggers || []).join("\n");
+  dashboardElements.flowObjective.value = flow.objective || "";
+  dashboardElements.flowSteps.value = flow.steps || "";
+  dashboardElements.flowRules.value = flow.rules || "";
+  dashboardElements.flowHandoffCondition.value = flow.handoffCondition || "";
+  dashboardElements.addFlowButton.textContent = "Salvar alteracoes";
+  dashboardElements.cancelFlowEditButton.classList.remove("hidden-view");
+}
+
+function removeFlow(flowId) {
+  dashboardState.tenant.conversationFlows = (dashboardState.tenant.conversationFlows || []).filter((item) => item.id !== flowId);
+
+  if (dashboardState.editingFlowId === flowId) {
+    resetFlowForm();
+  }
+
+  renderAll();
+}
+
 function upsertLink() {
   const nextLink = {
     id: dashboardState.editingLinkId || `link_${Date.now()}`,
@@ -3214,6 +3307,44 @@ function upsertFaq() {
 
   dashboardState.tenant.faq = faqItems;
   resetFaqForm();
+  renderAll();
+}
+
+function upsertConversationFlow() {
+  const name = dashboardElements.flowName.value.trim();
+  const triggers = parseFlowTriggers(dashboardElements.flowTriggers.value);
+
+  if (!name) {
+    throw new Error("Informe o nome do fluxo.");
+  }
+
+  if (!triggers.length) {
+    throw new Error("Informe pelo menos um gatilho para o fluxo.");
+  }
+
+  const nextFlow = {
+    id: dashboardState.editingFlowId || `flow_${Date.now()}`,
+    name,
+    enabled: dashboardElements.flowEnabled.value !== "false",
+    triggers,
+    objective: dashboardElements.flowObjective.value.trim(),
+    steps: dashboardElements.flowSteps.value.trim(),
+    rules: dashboardElements.flowRules.value.trim(),
+    handoffCondition: dashboardElements.flowHandoffCondition.value.trim()
+  };
+  const flows = Array.isArray(dashboardState.tenant.conversationFlows)
+    ? dashboardState.tenant.conversationFlows
+    : [];
+  const existingIndex = flows.findIndex((item) => item.id === nextFlow.id);
+
+  if (existingIndex >= 0) {
+    flows[existingIndex] = nextFlow;
+  } else {
+    flows.push(nextFlow);
+  }
+
+  dashboardState.tenant.conversationFlows = flows;
+  resetFlowForm();
   renderAll();
 }
 
@@ -3344,6 +3475,7 @@ function buildPayload() {
     partnerships: dashboardState.tenant.partnerships || [],
     links: dashboardState.tenant.links,
     faq: dashboardState.tenant.faq || [],
+    conversationFlows: dashboardState.tenant.conversationFlows || [],
     advancedOptions: dashboardState.tenant.advancedOptions || [],
     menu: buildAutomaticMenu(dashboardState.tenant.botModel),
     messages: getEffectiveMessages(),
@@ -3661,6 +3793,7 @@ async function saveTenant() {
 
   dashboardState.tenant = response.data;
   dashboardState.tenant.botModel = normalizePanelBotModel(response.data.botModel);
+  dashboardState.tenant.conversationFlows = Array.isArray(response.data.conversationFlows) ? response.data.conversationFlows : [];
   renderAll();
   setFeedback(response.message || "Alteracoes salvas com sucesso.");
 }
@@ -3720,6 +3853,7 @@ async function uploadTenantConfig() {
 
   dashboardState.tenant = response.data;
   dashboardState.tenant.botModel = normalizePanelBotModel(response.data.botModel);
+  dashboardState.tenant.conversationFlows = Array.isArray(response.data.conversationFlows) ? response.data.conversationFlows : [];
   dashboardState.tenant.advancedOptions = Array.isArray(response.data.advancedOptions) ? response.data.advancedOptions : [];
   dashboardState.tenant.faq = Array.isArray(response.data.faq) ? response.data.faq : [];
   dashboardState.tenant.categories = Array.isArray(response.data.categories) ? response.data.categories : [];
@@ -3879,6 +4013,7 @@ async function loadDashboard() {
 
   dashboardState.tenant = tenant;
   dashboardState.tenant.botModel = normalizePanelBotModel(tenant.botModel);
+  dashboardState.tenant.conversationFlows = Array.isArray(tenant.conversationFlows) ? tenant.conversationFlows : [];
   dashboardState.tenant.advancedOptions = Array.isArray(tenant.advancedOptions) ? tenant.advancedOptions : [];
   dashboardState.tenant.faq = Array.isArray(tenant.faq) ? tenant.faq : [];
   dashboardState.tenant.categories = Array.isArray(tenant.categories) ? tenant.categories : [];
@@ -3918,6 +4053,7 @@ async function loadDashboard() {
   resetPartnershipForm();
   resetLinkForm();
   resetFaqForm();
+  resetFlowForm();
   resetMenuForm();
   renderAll();
   showSection(getSavedSection());
@@ -3969,6 +4105,8 @@ dashboardElements.addLinkButton.addEventListener("click", () => runAction(upsert
 dashboardElements.cancelLinkEditButton.addEventListener("click", resetLinkForm);
 dashboardElements.addFaqButton.addEventListener("click", () => runAction(upsertFaq));
 dashboardElements.cancelFaqEditButton.addEventListener("click", resetFaqForm);
+dashboardElements.addFlowButton.addEventListener("click", () => runAction(upsertConversationFlow));
+dashboardElements.cancelFlowEditButton.addEventListener("click", resetFlowForm);
 dashboardElements.toggleAdvancedMenuButton.addEventListener("click", () => toggleAdvancedMenu());
 dashboardElements.cancelMenuEditButton.addEventListener("click", resetMenuForm);
 dashboardElements.addMenuButton.addEventListener("click", () => runAction(addAdvancedMenuItem));

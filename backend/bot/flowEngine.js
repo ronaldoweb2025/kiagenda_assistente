@@ -170,6 +170,248 @@ function shouldUseFAQNow(state, faqMatch) {
   return false;
 }
 
+function getEnabledConversationFlows(config = {}) {
+  return Array.isArray(config?.conversationFlows)
+    ? config.conversationFlows.filter((flow) => flow?.enabled !== false && flow?.id && Array.isArray(flow.triggers) && flow.triggers.length)
+    : [];
+}
+
+function matchConversationFlow(message, config = {}) {
+  const normalizedMessage = normalizeText(message);
+
+  if (!normalizedMessage) {
+    return null;
+  }
+
+  let bestMatch = null;
+
+  getEnabledConversationFlows(config).forEach((flow) => {
+    (flow.triggers || []).forEach((trigger) => {
+      const normalizedTrigger = normalizeText(trigger);
+
+      if (!normalizedTrigger) {
+        return;
+      }
+
+      let score = 0;
+
+      if (normalizedMessage === normalizedTrigger) {
+        score = 1;
+      } else if (normalizedMessage.includes(normalizedTrigger)) {
+        score = normalizedTrigger.split(/\s+/).length > 1 ? 0.95 : 0.86;
+      } else if (normalizedTrigger.includes(normalizedMessage) && normalizedMessage.length >= 4) {
+        score = 0.82;
+      }
+
+      if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = {
+          ...flow,
+          matchedTrigger: trigger,
+          score
+        };
+      }
+    });
+  });
+
+  return bestMatch && bestMatch.score >= 0.8 ? bestMatch : null;
+}
+
+function getActiveConversationFlow(state, config = {}) {
+  const flowId = String(state?.currentFlow || "").trim();
+
+  if (!flowId) {
+    return null;
+  }
+
+  return getEnabledConversationFlows(config).find((flow) => flow.id === flowId) || null;
+}
+
+function parseConversationFlowSteps(flow = {}) {
+  const rawSteps = String(flow?.steps || "").trim();
+
+  if (!rawSteps) {
+    return [];
+  }
+
+  return rawSteps
+    .split(/\s*(?:\d+[\.)]\s+|[\r\n]+|;\s*)/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+}
+
+function getConversationFlowStepNumber(stage) {
+  const match = String(stage || "").match(/^step_(\d+)$/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeFlowStepQuestion(step) {
+  const rawStep = String(step || "").trim();
+  const askIfMatch = rawStep.match(/^perguntar\s+se\s+(.+)$/i);
+
+  if (askIfMatch?.[1]) {
+    const subject = askIfMatch[1].trim().replace(/[?.!]$/g, "").replace(/\bou se\b/gi, "ou");
+    return `Voce ${subject}?`;
+  }
+
+  const askSubjectMatch = rawStep.match(/^perguntar\s+(.+)$/i);
+
+  if (askSubjectMatch?.[1]) {
+    let subject = askSubjectMatch[1].trim().replace(/[?.!]$/g, "");
+
+    if (/^(qual|quais|quando|onde|como|o que)\b/i.test(subject)) {
+      return /[?.!]$/.test(subject) ? subject : `${subject}?`;
+    }
+
+    if (/^sobre\s+/i.test(subject)) {
+      subject = subject.replace(/^sobre\s+/i, "");
+    }
+
+    if (!/^(o|a|os|as|um|uma)\s+/i.test(subject)) {
+      subject = `o ${subject}`;
+    }
+
+    return `Qual e ${subject}?`;
+  }
+
+  const cleaned = rawStep.replace(/^explicar\s+/i, "").trim();
+
+  if (!cleaned) {
+    return "";
+  }
+
+  if (/[?.!]$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  if (/^(ja|qual|quais|quando|onde|como|o que|sera|seria|tem|precisa|quer|deseja)\b/i.test(cleaned)) {
+    return `${cleaned}?`;
+  }
+
+  return cleaned;
+}
+
+function buildConversationFlowFallback(flow, currentStage = "started") {
+  const steps = parseConversationFlowSteps(flow);
+  const currentStepNumber = getConversationFlowStepNumber(currentStage);
+  const nextStep = steps[currentStepNumber] || steps[0] || "";
+  const stepReply = normalizeFlowStepQuestion(nextStep);
+
+  if (stepReply) {
+    return stepReply;
+  }
+
+  return [
+    flow?.objective ? `Entendi. ${flow.objective}` : "Entendi.",
+    "Me conta uma coisa para eu te direcionar melhor: em que ponto voce esta hoje?"
+  ].filter(Boolean).join("\n\n");
+}
+
+function getNextConversationFlowStage(flow, currentStage = "started") {
+  const steps = parseConversationFlowSteps(flow);
+  const currentStepNumber = getConversationFlowStepNumber(currentStage);
+  const nextStepNumber = Math.min(currentStepNumber + 1, Math.max(steps.length, 1));
+  return `step_${nextStepNumber}`;
+}
+
+function extractLastQuestion(reply) {
+  const text = String(reply || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const questionMatches = text.match(/[^.?!\n]*\?/g);
+
+  if (questionMatches?.length) {
+    return questionMatches[questionMatches.length - 1].trim();
+  }
+
+  return "";
+}
+
+function buildFlowRetakeReply(shortReply, lastQuestion) {
+  const retake = String(lastQuestion || "").trim();
+
+  if (!retake) {
+    return String(shortReply || "").trim();
+  }
+
+  return [
+    String(shortReply || "").trim(),
+    `Agora me conta: ${retake}`
+  ].filter(Boolean).join("\n\n");
+}
+
+function isLikelyFlowAnswer(message) {
+  const rawMessage = String(message || "").trim();
+  const text = normalizeText(rawMessage).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+  if (!text) {
+    return false;
+  }
+
+  if (rawMessage.includes("?")) {
+    return false;
+  }
+
+  const words = text.split(/\s+/).filter(Boolean);
+
+  if (words.length <= 5) {
+    return true;
+  }
+
+  return /^(sim|nao|não|primeiro|tenho|nao tenho|não tenho|sou|e|é|quero|preciso)\b/i.test(String(message || "").trim());
+}
+
+function buildOutOfContextShortReply(message, state, config = {}) {
+  const text = normalizeText(message);
+  const businessName = config?.business?.name || "empresa";
+
+  if (!state?.currentFlow || !state?.lastQuestion) {
+    return "";
+  }
+
+  if (/(voce|vc).*\b(humano|robo|assistente|atendente)\b|\b(e|é)\s+(humano|robo|robô)\b|quem (esta|ta|fala)|falando com quem/.test(text)) {
+    return `Sou o assistente do ${businessName}.\nMas consigo te ajudar por aqui tranquilo.`;
+  }
+
+  if (["menu", "opcoes", "opcao", "inicio", "comecar", "voltar"].includes(text)) {
+    return "A gente ja esta no caminho certo, entao vou manter essa conversa por aqui.";
+  }
+
+  if (["oi", "ola", "bom dia", "boa tarde", "boa noite"].some((term) => text === term || text.startsWith(`${term} `))) {
+    return "Oi. Seguimos por aqui.";
+  }
+
+  if (/\b(preco|valor|quanto custa|prazo|demora|garantia|desconto)\b/.test(text)) {
+    return "Posso te orientar melhor depois de entender esse ponto. Nao vou prometer preco, prazo ou condicao sem analise.";
+  }
+
+  if (/\b(atendente|humano|pessoa|ronaldo|responsavel)\b/.test(text) && /\b(falar|chamar|encaminhar|passar|atendimento)\b/.test(text)) {
+    return "Consigo encaminhar quando ficar claro o melhor caminho para voce.";
+  }
+
+  if (isLikelyFlowAnswer(message)) {
+    return "";
+  }
+
+  if (text.includes("?") || /\b(jogo|noticia|politica|receita|filme|musica|clima|tempo hoje)\b/.test(text)) {
+    return "Entendi sua pergunta, mas para nao fugir do atendimento vou responder bem curto: esse ponto nao faz parte do que consigo confirmar por aqui.";
+  }
+
+  return "";
+}
+
+function handleOutOfContext(message, state, config = {}) {
+  const shortReply = buildOutOfContextShortReply(message, state, config);
+
+  if (!shortReply) {
+    return null;
+  }
+
+  return buildFlowRetakeReply(shortReply, state.lastQuestion);
+}
+
 function isServiceContextQuestion(message) {
   const text = normalizeText(message);
   return ["quanto custa", "preco", "valor", "tem mais", "mais info", "mais detalhes", "como funciona", "como e", "explica"].some((term) =>
@@ -1216,6 +1458,9 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       buildReplyStatePatch(state, message, reply, {
         currentState: "handoff",
         currentStage: "human_handoff",
+        currentFlow: "",
+        lastQuestion: "",
+        pendingQuestion: "",
         humanRequested: true,
         handoffUntil: Date.now() + config.settings.handoffTimeout * 60 * 1000,
         lastBotMessageType: "bot_stopped"
@@ -1240,6 +1485,9 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       buildReplyStatePatch(state, message, reply, {
         currentState: "idle",
         currentStage: "idle",
+        currentFlow: "",
+        lastQuestion: "",
+        pendingQuestion: "",
         humanRequested: false,
         handoffUntil: null,
         fallbackCount: 0,
@@ -1279,6 +1527,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     };
   }
 
+  const activeConversationFlow = getActiveConversationFlow(state, config);
+  const matchedConversationFlow = activeConversationFlow || matchConversationFlow(message, config);
   const faqMatch = matchFAQ(message, config?.faq || []);
 
   if (faqMatch) {
@@ -1299,13 +1549,11 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
         lastSuggestedService: state.conversationState?.lastSuggestedService || "",
         pendingQuestion: state.pendingQuestion || ""
       });
-    } else {
+    } else if (faqMatch.mode === "fixed") {
       const fallbackReply = interpolateTenantText(faqMatch.resposta, config);
-      const reply = faqMatch.mode === "knowledge"
-        ? (await generateConversationalReply({ message, faqMatch, tenantConfig: config, state })) || fallbackReply
-        : fallbackReply;
+      const reply = fallbackReply;
 
-      console.log(faqMatch.mode === "knowledge" ? "FAQ_USED_AS_KNOWLEDGE" : "FAQ_USED_FIXED", {
+      console.log("FAQ_USED_FIXED", {
         pergunta: faqMatch.pergunta,
         critical: faqMatch.item?.critical === true
       });
@@ -1320,7 +1568,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
           outOfScopeCount: 0,
           handoffUntil: null,
           humanRequested: false,
-          lastBotMessageType: faqMatch.mode === "knowledge" ? "faq_knowledge" : "faq_fixed"
+          lastBotMessageType: "faq_fixed"
         }),
         config.settings.stateTTL
       );
@@ -1328,10 +1576,15 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       return {
         tenantId,
         contactId,
-        intent: faqMatch.mode === "knowledge" ? "faq_knowledge" : "faq",
+        intent: "faq",
         reply,
         state: faqState
       };
+    } else if (matchedConversationFlow) {
+      console.log("FAQ_USED_AS_KNOWLEDGE", {
+        pergunta: faqMatch.pergunta,
+        flowId: matchedConversationFlow.id
+      });
     }
   }
 
@@ -1381,13 +1634,17 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     };
   }
 
-  if (isResetContextMessage(message)) {
+  if (!activeConversationFlow && isResetContextMessage(message)) {
     const resetState = setState(
       tenantId,
       contactId,
       {
         ...buildConversationStatePatch(),
+        currentFlow: "",
+        currentStage: "idle",
+        lastQuestion: "",
         lastUserMessage: "",
+        pendingQuestion: "",
         pendingServiceConfirmationId: "",
         pendingServiceConfirmationScore: 0
       },
@@ -1403,7 +1660,7 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
     };
   }
 
-  if (matchIntent(message, config).intent === "atendimento_humano") {
+  if (!activeConversationFlow && matchIntent(message, config).intent === "atendimento_humano") {
     const reply = buildHandoffMessage(config);
     const handoffState = setState(
       tenantId,
@@ -1411,6 +1668,9 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       buildReplyStatePatch(state, message, reply, {
         currentState: "handoff",
         currentStage: "human_handoff",
+        currentFlow: "",
+        lastQuestion: "",
+        pendingQuestion: "",
         fallbackCount: 0,
         outOfScopeCount: 0,
         humanRequested: true,
@@ -1433,6 +1693,117 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       reply,
       mediaMessages: buildHandoffAudioMessages(config),
       state: handoffState
+    };
+  }
+
+  if (matchedConversationFlow) {
+    const startedNow = !activeConversationFlow;
+    const flowStage = startedNow ? "started" : state.currentStage || "started";
+    const activeServiceForFlow = (config.services || []).find((item) => item.id === conversationState.lastSuggestedService);
+
+    console.log(startedNow ? "FLOW_MATCH_FOUND" : "FLOW_ACTIVE", {
+      flowId: matchedConversationFlow.id,
+      name: matchedConversationFlow.name,
+      trigger: matchedConversationFlow.matchedTrigger || "",
+      currentStage: flowStage
+    });
+
+    if (activeConversationFlow) {
+      const recoveryReply = handleOutOfContext(message, state, config);
+
+      if (recoveryReply) {
+        const safeRecoveryReply = avoidRepetition(recoveryReply, state, config);
+
+        console.log("FLOW_OUT_OF_CONTEXT_RECOVERY", {
+          flowId: matchedConversationFlow.id,
+          currentStage: flowStage
+        });
+
+        const recoveryState = setState(
+          tenantId,
+          contactId,
+          buildReplyStatePatch(state, message, safeRecoveryReply, {
+            currentState: "conversation_flow",
+            currentFlow: matchedConversationFlow.id,
+            currentStage: flowStage,
+            lastQuestion: state.lastQuestion || "",
+            pendingQuestion: state.lastQuestion || state.pendingQuestion || "",
+            fallbackCount: 0,
+            outOfScopeCount: 0,
+            handoffUntil: null,
+            humanRequested: false,
+            lastBotMessageType: "conversation_flow_recovery",
+            ...buildConversationStatePatch({
+              stage: flowStage,
+              lastSuggestedService: activeServiceForFlow?.id || conversationState.lastSuggestedService,
+              lastIntent: conversationState.lastIntent || "conversation_flow",
+              rejectedServices: conversationState.rejectedServices
+            })
+          }),
+          config.settings.stateTTL
+        );
+
+        return {
+          tenantId,
+          contactId,
+          intent: "conversation_flow_recovery",
+          reply: safeRecoveryReply,
+          state: recoveryState
+        };
+      }
+    }
+
+    const reply = (await generateConversationalReply({
+      message,
+      faqMatch: faqMatch?.mode === "knowledge" ? faqMatch : null,
+      tenantConfig: config,
+      state,
+      currentFlow: matchedConversationFlow,
+      activeService: activeServiceForFlow
+    })) || buildConversationFlowFallback(matchedConversationFlow, flowStage);
+    const safeReply = avoidRepetition(reply, state, config);
+    const nextStage = getNextConversationFlowStage(matchedConversationFlow, flowStage);
+    const lastQuestion = extractLastQuestion(safeReply) || state.lastQuestion || "";
+
+    console.log("FLOW_STAGE_UPDATED", {
+      flowId: matchedConversationFlow.id,
+      from: flowStage,
+      to: nextStage
+    });
+    console.log("REPLY_SOURCE=conversation_flow_ai", {
+      flowId: matchedConversationFlow.id
+    });
+
+    const flowState = setState(
+      tenantId,
+      contactId,
+      buildReplyStatePatch(state, message, safeReply, {
+        currentState: "conversation_flow",
+        currentFlow: matchedConversationFlow.id,
+        currentStage: nextStage,
+        lastQuestion,
+        pendingQuestion: lastQuestion,
+        fallbackCount: 0,
+        outOfScopeCount: 0,
+        handoffUntil: null,
+        humanRequested: false,
+        lastBotMessageType: "conversation_flow_ai",
+        ...buildConversationStatePatch({
+          stage: nextStage,
+          lastSuggestedService: activeServiceForFlow?.id || conversationState.lastSuggestedService,
+          lastIntent: conversationState.lastIntent || "conversation_flow",
+          rejectedServices: conversationState.rejectedServices
+        })
+      }),
+      config.settings.stateTTL
+    );
+
+    return {
+      tenantId,
+      contactId,
+      intent: "conversation_flow",
+      reply: safeReply,
+      state: flowState
     };
   }
 
@@ -2043,5 +2414,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
 
 module.exports = {
   processIncomingMessage,
+  matchConversationFlow,
+  getActiveConversationFlow,
+  handleOutOfContext,
   shouldUseFAQNow
 };

@@ -27,12 +27,48 @@ function buildRecentMessagesText(state = {}) {
     .join("\n");
 }
 
-async function generateConversationalReply({ message, faqMatch, tenantConfig, state }) {
+function buildServicesText(tenantConfig = {}, activeService = null) {
+  const services = Array.isArray(tenantConfig?.services) ? tenantConfig.services.slice(0, 12) : [];
+  const lines = services
+    .map((service) => {
+      const parts = [
+        service?.name || "",
+        service?.description ? `descricao: ${service.description}` : "",
+        service?.price ? `preco: ${service.price}` : "",
+        Array.isArray(service?.keywords) && service.keywords.length ? `palavras: ${service.keywords.join(", ")}` : ""
+      ].filter(Boolean);
+
+      return parts.join(" | ");
+    })
+    .filter(Boolean);
+
+  if (activeService?.name) {
+    lines.unshift(`Servico em contexto: ${activeService.name}${activeService.description ? ` | ${activeService.description}` : ""}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildFlowText(currentFlow = null) {
+  if (!currentFlow) {
+    return "";
+  }
+
+  return [
+    `Fluxo ativo: ${currentFlow.name || currentFlow.id || ""}`,
+    `Objetivo: ${currentFlow.objective || "Nao informado"}`,
+    `Etapas sugeridas: ${currentFlow.steps || "Nao informado"}`,
+    `Regras do fluxo: ${currentFlow.rules || "Nao informado"}`,
+    `Condicao de encaminhamento: ${currentFlow.handoffCondition || "Nao informado"}`
+  ].filter(Boolean).join("\n");
+}
+
+async function generateConversationalReply({ message, faqMatch, tenantConfig, state, currentFlow = null, activeService = null }) {
   const fallbackReply = interpolateTenantText(faqMatch?.resposta || "", tenantConfig);
   const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || process.env.GEMINI_API_KEY || "").trim();
-  const model = String(tenantConfig?.integration?.gemini?.model || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
+  const model = String(tenantConfig?.integration?.gemini?.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
 
-  if (!apiKey || !fallbackReply) {
+  if (!apiKey || (!fallbackReply && !currentFlow)) {
     return "";
   }
 
@@ -51,9 +87,11 @@ async function generateConversationalReply({ message, faqMatch, tenantConfig, st
                 text:
                   "Voce e um assistente virtual de WhatsApp. " +
                   "Responda de forma natural, curta e profissional. " +
-                  "Use a resposta do FAQ como unica fonte de verdade. " +
+                  "Use apenas as informacoes cadastradas no tenant, nos servicos, no fluxo ativo e no FAQ informado. " +
                   "Nao invente preco, prazo, link, garantia, promocao ou servico. " +
                   "Nao encaminhe para humano automaticamente, apenas ofereca se fizer sentido. " +
+                  "Quando houver fluxo ativo, continue dentro dele, nao volte para o menu e nao repita apresentacao inicial. " +
+                  "Siga a proxima etapa logica considerando o historico. " +
                   "Faca no maximo uma pergunta de continuidade."
               }
             ]
@@ -65,11 +103,14 @@ async function generateConversationalReply({ message, faqMatch, tenantConfig, st
                 {
                   text:
                     `Empresa: ${tenantConfig?.business?.name || "Nao informado"}\n` +
-                    `Pergunta cadastrada no FAQ: ${faqMatch?.pergunta || ""}\n` +
-                    `Resposta cadastrada no FAQ: ${fallbackReply}\n` +
+                    `Tipo de negocio: ${tenantConfig?.business?.type || "Nao informado"}\n` +
+                    `Descricao do negocio: ${tenantConfig?.business?.description || "Nao informado"}\n` +
+                    `${buildFlowText(currentFlow) ? `${buildFlowText(currentFlow)}\n` : ""}` +
+                    `Servicos cadastrados:\n${buildServicesText(tenantConfig, activeService) || "Nenhum servico cadastrado"}\n` +
+                    `${faqMatch ? `FAQ knowledge encontrado:\nPergunta: ${faqMatch?.pergunta || ""}\nResposta: ${fallbackReply}\n` : ""}` +
                     `Ultimas mensagens:\n${buildRecentMessagesText(state) || "Sem historico recente"}\n` +
                     `Mensagem atual do cliente: ${String(message || "").trim()}\n\n` +
-                    "Reescreva a resposta para este contexto mantendo o mesmo sentido."
+                    "Gere a melhor resposta para continuar o atendimento neste contexto."
                 }
               ]
             }

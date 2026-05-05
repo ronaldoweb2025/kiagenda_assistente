@@ -126,10 +126,14 @@ function formatCatalogItems(items = []) {
 
 async function detectIntentWithGemini(message, tenantConfig = {}, runtimeContext = {}) {
   const trimmedMessage = String(message || "").trim();
-  const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || "").trim();
-  const model = String(tenantConfig?.integration?.gemini?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+  const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || process.env.GEMINI_API_KEY || "").trim();
+  const model = String(tenantConfig?.integration?.gemini?.model || process.env.GEMINI_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
 
   if (!trimmedMessage || !apiKey) {
+    if (trimmedMessage && !apiKey) {
+      console.log("Gemini nao usada: GEMINI_API_KEY ausente no tenant e no env.");
+    }
+
     return buildFallbackResult();
   }
 

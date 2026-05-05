@@ -3,7 +3,9 @@ const { readTenantStates, writeTenantStates } = require("../tenancy/tenantStateS
 function getDefaultState() {
   return {
     currentState: "idle",
+    currentFlow: "",
     currentStage: "idle",
+    lastQuestion: "",
     lastInteractionAt: null,
     fallbackCount: 0,
     outOfScopeCount: 0,
@@ -24,6 +26,7 @@ function getDefaultState() {
       rejectedServices: []
     },
     lastUserMessage: "",
+    pendingQuestion: "",
     pendingServiceConfirmationId: "",
     pendingServiceConfirmationScore: 0
   };

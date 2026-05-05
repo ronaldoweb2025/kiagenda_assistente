@@ -387,6 +387,25 @@ function normalizeFaqItems(items) {
     .filter((item) => item.resposta && (item.pergunta || item.perguntas.length));
 }
 
+function normalizeConversationFlows(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item, index) => ({
+      id: normalizeString(item?.id) || `flow_${index + 1}`,
+      name: normalizeString(item?.name),
+      enabled: item?.enabled !== undefined ? normalizeBoolean(item.enabled) : true,
+      triggers: normalizeStringList(item?.triggers),
+      objective: normalizeString(item?.objective),
+      steps: normalizeString(item?.steps),
+      rules: normalizeString(item?.rules),
+      handoffCondition: normalizeString(item?.handoffCondition)
+    }))
+    .filter((item) => item.name && item.triggers.length);
+}
+
 function normalizeAdvancedOptions(items) {
   if (!Array.isArray(items)) {
     return [];
@@ -495,6 +514,7 @@ function normalizeTenant(input = {}) {
     },
     links: normalizeLinks(input?.links),
     faq: normalizeFaqItems(input?.faq),
+    conversationFlows: normalizeConversationFlows(input?.conversationFlows),
     advancedOptions: normalizeAdvancedOptions(input?.advancedOptions),
     categories: migratedTenant.categories,
     products: normalizeCatalogItems(migratedTenant.products, "product"),
@@ -576,6 +596,9 @@ function mergeTenant(baseTenant, partialTenant) {
     },
     links: Array.isArray(partialTenant.links) ? partialTenant.links : baseTenant.links,
     faq: Array.isArray(partialTenant.faq) ? partialTenant.faq : baseTenant.faq,
+    conversationFlows: Array.isArray(partialTenant.conversationFlows) && partialTenant.conversationFlows.length
+      ? partialTenant.conversationFlows
+      : baseTenant.conversationFlows,
     advancedOptions: Array.isArray(partialTenant.advancedOptions)
       ? partialTenant.advancedOptions
       : baseTenant.advancedOptions,

@@ -49,6 +49,7 @@ const defaultTenantConfig = {
   partnerships: [],
   links: [],
   faq: [],
+  conversationFlows: [],
   advancedOptions: [],
   menu: [
     {
