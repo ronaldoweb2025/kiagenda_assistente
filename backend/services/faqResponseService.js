@@ -1,4 +1,5 @@
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+const { buildSystemPrompt, detectarFluxo } = require("./promptBuilder");
 
 function interpolateTenantText(text, config = {}) {
   const businessName = config?.business?.name || "empresa";
@@ -27,6 +28,21 @@ function buildRecentMessagesText(state = {}) {
     .join("\n");
 }
 
+function normalizeConversationHistoryItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .slice(-8)
+    .map((item) => {
+      const role = item?.role === "model" || item?.role === "bot" || item?.role === "assistant" ? "model" : "user";
+      const content = String(item?.content || item?.message || "").trim();
+      return content ? { role, content } : null;
+    })
+    .filter(Boolean);
+}
+
 function buildServicesText(tenantConfig = {}, activeService = null) {
   const services = Array.isArray(tenantConfig?.services) ? tenantConfig.services.slice(0, 12) : [];
   const lines = services
@@ -49,24 +65,22 @@ function buildServicesText(tenantConfig = {}, activeService = null) {
   return lines.join("\n");
 }
 
-function buildFlowText(currentFlow = null) {
-  if (!currentFlow) {
-    return "";
-  }
-
-  return [
-    `Fluxo ativo: ${currentFlow.name || currentFlow.id || ""}`,
-    `Objetivo: ${currentFlow.objective || "Nao informado"}`,
-    `Etapas sugeridas: ${currentFlow.steps || "Nao informado"}`,
-    `Regras do fluxo: ${currentFlow.rules || "Nao informado"}`,
-    `Condicao de encaminhamento: ${currentFlow.handoffCondition || "Nao informado"}`
-  ].filter(Boolean).join("\n");
-}
-
-async function generateConversationalReply({ message, faqMatch, tenantConfig, state, currentFlow = null, activeService = null }) {
+async function generateConversationalReply({ message, faqMatch, tenantConfig, state, currentFlow = null, activeService = null, conversationHistory = null }) {
   const fallbackReply = interpolateTenantText(faqMatch?.resposta || "", tenantConfig);
   const apiKey = String(tenantConfig?.integration?.gemini?.apiKey || process.env.GEMINI_API_KEY || "").trim();
   const model = String(tenantConfig?.integration?.gemini?.model || process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim() || DEFAULT_GEMINI_MODEL;
+  const tenant = tenantConfig || {};
+  const userMessage = String(message || "").trim();
+  const normalizedHistory = normalizeConversationHistoryItems(conversationHistory || state?.recentMessages || []);
+  const fluxoAtivo = detectarFluxo(
+    tenant.conversationFlows || [],
+    userMessage,
+    normalizedHistory
+  ) || currentFlow;
+  const contextExtra = fluxoAtivo
+    ? `\n\n[FLUXO ATIVO: "${fluxoAtivo.name}" — siga as etapas desse roteiro agora]`
+    : "";
+  const systemPrompt = buildSystemPrompt(tenant) + contextExtra;
 
   if (!apiKey || (!fallbackReply && !currentFlow)) {
     return "";
@@ -84,15 +98,7 @@ async function generateConversationalReply({ message, faqMatch, tenantConfig, st
           systemInstruction: {
             parts: [
               {
-                text:
-                  "Voce e um assistente virtual de WhatsApp. " +
-                  "Responda de forma natural, curta e profissional. " +
-                  "Use apenas as informacoes cadastradas no tenant, nos servicos, no fluxo ativo e no FAQ informado. " +
-                  "Nao invente preco, prazo, link, garantia, promocao ou servico. " +
-                  "Nao encaminhe para humano automaticamente, apenas ofereca se fizer sentido. " +
-                  "Quando houver fluxo ativo, continue dentro dele, nao volte para o menu e nao repita apresentacao inicial. " +
-                  "Siga a proxima etapa logica considerando o historico. " +
-                  "Faca no maximo uma pergunta de continuidade."
+                text: systemPrompt
               }
             ]
           },
@@ -102,22 +108,18 @@ async function generateConversationalReply({ message, faqMatch, tenantConfig, st
               parts: [
                 {
                   text:
-                    `Empresa: ${tenantConfig?.business?.name || "Nao informado"}\n` +
-                    `Tipo de negocio: ${tenantConfig?.business?.type || "Nao informado"}\n` +
-                    `Descricao do negocio: ${tenantConfig?.business?.description || "Nao informado"}\n` +
-                    `${buildFlowText(currentFlow) ? `${buildFlowText(currentFlow)}\n` : ""}` +
                     `Servicos cadastrados:\n${buildServicesText(tenantConfig, activeService) || "Nenhum servico cadastrado"}\n` +
                     `${faqMatch ? `FAQ knowledge encontrado:\nPergunta: ${faqMatch?.pergunta || ""}\nResposta: ${fallbackReply}\n` : ""}` +
-                    `Ultimas mensagens:\n${buildRecentMessagesText(state) || "Sem historico recente"}\n` +
-                    `Mensagem atual do cliente: ${String(message || "").trim()}\n\n` +
+                    `Ultimas mensagens:\n${normalizedHistory.map((entry) => `${entry.role === "model" ? "Bot" : "Cliente"}: ${entry.content}`).join("\n") || buildRecentMessagesText(state) || "Sem historico recente"}\n` +
+                    `Mensagem atual do cliente: ${userMessage}\n\n` +
                     "Gere a melhor resposta para continuar o atendimento neste contexto."
                 }
               ]
             }
           ],
           generationConfig: {
-            temperature: 0.35,
-            maxOutputTokens: 180
+            temperature: 0.4,
+            maxOutputTokens: 350
           }
         })
       }

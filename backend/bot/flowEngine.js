@@ -854,6 +854,18 @@ function appendRecentMessages(state, userMessage, botMessage) {
   return recentMessages.slice(-10);
 }
 
+function buildConversationHistoryForAI(state) {
+  const recentMessages = Array.isArray(state?.recentMessages) ? state.recentMessages.slice(-8) : [];
+
+  return recentMessages
+    .map((entry) => {
+      const role = entry?.role === "bot" || entry?.role === "assistant" || entry?.role === "model" ? "model" : "user";
+      const content = String(entry?.content || entry?.message || "").trim();
+      return content ? { role, content } : null;
+    })
+    .filter(Boolean);
+}
+
 function buildReplyStatePatch(state, message, reply, extra = {}) {
   return {
     ...extra,
@@ -1759,7 +1771,8 @@ async function processIncomingMessage({ tenantId, contactId, message, config }) 
       tenantConfig: config,
       state,
       currentFlow: matchedConversationFlow,
-      activeService: activeServiceForFlow
+      activeService: activeServiceForFlow,
+      conversationHistory: buildConversationHistoryForAI(state)
     })) || buildConversationFlowFallback(matchedConversationFlow, flowStage);
     const safeReply = avoidRepetition(reply, state, config);
     const nextStage = getNextConversationFlowStage(matchedConversationFlow, flowStage);
