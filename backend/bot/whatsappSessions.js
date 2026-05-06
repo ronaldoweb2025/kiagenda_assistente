@@ -397,15 +397,6 @@ async function sendHumanLikeMessage(client, msg, response) {
     console.error("Erro ao limpar estado de digitacao:", error);
   }
 
-  if (typeof msg.reply === "function") {
-    try {
-      await msg.reply(response);
-      return;
-    } catch (error) {
-      console.error("Erro ao responder com reply, tentando envio direto:", error);
-    }
-  }
-
   await client.sendMessage(msg.from, response);
 }
 
